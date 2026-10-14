@@ -1,0 +1,571 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "mongodb"
+  url      = env("MONGODB_URI")
+}
+
+// ============================================================
+// 00 · SESSION  (Shopify OAuth — existing model)
+// ============================================================
+
+model tbl_Session {
+  session_id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  id                  String    @unique
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// ============================================================
+// 01 · DESIGN  (Core hub entity — every customization lives here)
+// ============================================================
+
+model tbl_Design {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // Shopify references
+  shop                   String
+  shopifyCustomerId      String
+  shopifyProductId       String
+  shopifyVariantId       String?
+  shopifyOrderId         String?
+  shopifyOrderLineItemId String?
+
+  // Identity
+  title  String?
+  // Values: DRAFT | SAVED | SUBMITTED | APPROVED | IN_PRODUCTION | COMPLETED | ARCHIVED
+  status String  @default("DRAFT")
+
+  // Feature 1 — Save & Share
+  shareToken          String    @unique
+  shareTokenExpiresAt DateTime?
+
+  // Pointer to the active revision
+  currentRevisionId String? @db.ObjectId
+
+  // Feature 9 — Design Library
+  isLibraryItem      Boolean   @default(false)
+  retentionExpiresAt DateTime?
+
+  // Canvas state (lightweight top-level snapshot; full history in DesignRevision)
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  revisions          tbl_DesignRevision[]
+  sessions           tbl_DesignSession[]
+  libraryItems       tbl_DesignLibraryItem[]
+  artworkChecks      tbl_ArtworkCheck[]
+  feasibilityChecks  tbl_FeasibilityCheck[]
+  proofs             tbl_Proof[]
+  comments           tbl_DesignComment[]
+  orderTimeline      tbl_OrderTimeline?
+  productionFiles    tbl_ProductionFile[]
+  productionHandoffs tbl_ProductionHandoff[]
+}
+
+// ============================================================
+// 02 · DESIGN REVISION  (Feature 8 — Full version history)
+// ============================================================
+
+model tbl_DesignRevision {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  versionNumber Int
+  label         String?
+  canvasState   Json
+  thumbnailUrl  String?
+  // Values: CUSTOMER | MERCHANT
+  changedBy        String
+  changeNote       String?
+  isApproved       Boolean @default(false)
+  // Values: DRAFT | PENDING_REVIEW | CHANGES_REQUESTED | APPROVED | REJECTED | SUPERSEDED
+  status           String  @default("DRAFT")
+  assetFingerprint String?
+  approvalMeta     Json?
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  proofs            tbl_Proof[]
+  comments          tbl_DesignComment[]
+  artworkChecks     tbl_ArtworkCheck[]
+  feasibilityChecks tbl_FeasibilityCheck[]
+  productionFiles   tbl_ProductionFile[]
+  proofApprovals    tbl_ProofApproval[]
+  libraryItems      tbl_DesignLibraryItem[]
+}
+
+// ============================================================
+// 03 · DESIGN SESSION  (Feature 1 — Cross-session persistence)
+// ============================================================
+
+model tbl_DesignSession {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  sessionToken      String    @unique
+  shopifyCustomerId String?
+  lastActiveAt      DateTime  @default(now())
+  deviceInfo        Json?
+  expiresAt         DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// 04 · DESIGN LIBRARY ITEM  (Feature 9 — Reusable design library)
+// ============================================================
+
+model tbl_DesignLibraryItem {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop              String
+  shopifyCustomerId String
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  revisionId String             @db.ObjectId
+  revision   tbl_DesignRevision @relation(fields: [revisionId], references: [id])
+
+  name         String
+  thumbnailUrl String?
+  tags         String[]
+  isPublic     Boolean  @default(false)
+
+  // Values: KEEP_FOREVER | EXPIRES_AT | ORDER_BASED
+  retentionPolicy    String    @default("KEEP_FOREVER")
+  retentionExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// 05 · ARTWORK CHECK  (Feature 4 — Upload quality validation)
+// ============================================================
+
+model tbl_ArtworkCheck {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  revisionId String?             @db.ObjectId
+  revision   tbl_DesignRevision? @relation(fields: [revisionId], references: [id])
+
+  assetUrl String
+
+  // Values: PENDING | PASSED | WARNED | FAILED
+  status String @default("PENDING")
+
+  // Detected properties
+  resolutionDpi Float?
+  widthPx       Int?
+  heightPx      Int?
+  colorMode     String?
+  fileFormat    String?
+
+  // Issues found: [{ code, severity, message, suggestion }]
+  issues Json[]
+
+  // Required specs (pulled from ProductCustomizationConfig at check time)
+  requiredDpi      Float?
+  requiredWidthPx  Int?
+  requiredHeightPx Int?
+
+  checkedAt DateTime @default(now())
+}
+
+// ============================================================
+// 06 · FEASIBILITY CHECK  (Feature 5 — Production impossibility guard)
+// ============================================================
+
+model tbl_FeasibilityCheck {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  revisionId String?             @db.ObjectId
+  revision   tbl_DesignRevision? @relation(fields: [revisionId], references: [id])
+
+  // Values: PENDING | PASSED | FAILED
+  status String @default("PENDING")
+
+  // [{ ruleCode, description, affectedOption }]
+  blockers Json[]
+  // Non-blocking issues
+  warnings Json[]
+
+  // Snapshot of the options that were validated
+  validatedOptions Json
+
+  checkedAt DateTime @default(now())
+}
+
+// ============================================================
+// 07 · PROOF  (Feature 2 — Formal proof sent to customer)
+// ============================================================
+
+model tbl_Proof {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  revisionId String             @db.ObjectId
+  revision   tbl_DesignRevision @relation(fields: [revisionId], references: [id])
+
+  proofNumber Int
+  previewUrl  String
+
+  // Values: PENDING | APPROVED | REVISION_REQUESTED | EXPIRED
+  status String @default("PENDING")
+
+  sentAt       DateTime?
+  expiresAt    DateTime?
+  customerNote String?
+  merchantNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  approval tbl_ProofApproval?
+  comments tbl_DesignComment[]
+}
+
+// ============================================================
+// 08 · PROOF APPROVAL  (Feature 2 — Immutable approval audit record)
+// ============================================================
+
+model tbl_ProofApproval {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  proofId String    @unique @db.ObjectId
+  proof   tbl_Proof @relation(fields: [proofId], references: [id])
+
+  designId String @db.ObjectId
+
+  revisionId String             @db.ObjectId
+  revision   tbl_DesignRevision @relation(fields: [revisionId], references: [id])
+
+  // Linked Shopify order for audit trail
+  shopifyOrderId String?
+
+  approvedBy     String
+  // Values: CLICK_APPROVE | EMAIL_LINK | STAFF_OVERRIDE
+  approvalMethod String
+
+  // Legal audit fields
+  ipAddress String?
+  userAgent String?
+
+  approvedAt DateTime @default(now())
+}
+
+// ============================================================
+// 09 · DESIGN COMMENT  (Feature 7 — Threaded customer–merchant comments)
+// ============================================================
+
+model tbl_DesignComment {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  proofId String?    @db.ObjectId
+  proof   tbl_Proof? @relation(fields: [proofId], references: [id])
+
+  revisionId String?             @db.ObjectId
+  revision   tbl_DesignRevision? @relation(fields: [revisionId], references: [id])
+
+  // Self-referential threading
+  parentCommentId String? @db.ObjectId
+
+  // Values: CUSTOMER | MERCHANT | SYSTEM
+  authorType String
+  authorId   String
+  authorName String?
+
+  body           String
+  attachmentUrls String[]
+
+  isResolved Boolean   @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// 10 · ORDER TIMELINE  (Feature 6 — Per-order status container)
+// ============================================================
+
+model tbl_OrderTimeline {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop              String
+  shopifyOrderId    String  @unique
+  shopifyCustomerId String?
+
+  designId String?     @unique @db.ObjectId
+  design   tbl_Design? @relation(fields: [designId], references: [id])
+
+  // Values: DESIGN_RECEIVED | PROOF_READY | PROOF_APPROVED | IN_PRODUCTION | QUALITY_CHECK | SHIPPED | DELIVERED | CANCELLED
+  currentStage            String    @default("DESIGN_RECEIVED")
+  estimatedCompletionDate DateTime?
+  customerNotifyEmail     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  events tbl_OrderTimelineEvent[]
+}
+
+// ============================================================
+// 11 · ORDER TIMELINE EVENT  (Feature 6 — Individual stage-change events)
+// ============================================================
+
+model tbl_OrderTimelineEvent {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  timelineId String            @db.ObjectId
+  timeline   tbl_OrderTimeline @relation(fields: [timelineId], references: [id])
+
+  // Values: DESIGN_RECEIVED | PROOF_READY | PROOF_APPROVED | IN_PRODUCTION | QUALITY_CHECK | SHIPPED | DELIVERED | CANCELLED
+  stage       String
+  title       String
+  description String?
+
+  // Values: SYSTEM | MERCHANT | WEBHOOK
+  triggeredBy       String  @default("SYSTEM")
+  isCustomerVisible Boolean @default(true)
+  notificationSent  Boolean @default(false)
+
+  occurredAt DateTime @default(now())
+
+  // Extra context (e.g. tracking number, proof URL)
+  metadata Json?
+}
+
+// ============================================================
+// 12 · PRODUCTION FILE  (Feature 3 — Print-ready generated files)
+// ============================================================
+
+model tbl_ProductionFile {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  designId String     @db.ObjectId
+  design   tbl_Design @relation(fields: [designId], references: [id])
+
+  revisionId String             @db.ObjectId
+  revision   tbl_DesignRevision @relation(fields: [revisionId], references: [id])
+
+  proofApprovalId String? @db.ObjectId
+
+  fileUrl    String
+  fileName   String
+  // Values: PDF | PNG | SVG | AI | EPS | TIFF
+  fileFormat String
+
+  // Physical dimensions
+  widthMm      Float
+  heightMm     Float
+  dpi          Int
+  colorProfile String?
+  bleedMm      Float?
+
+  // Values: GENERATING | READY | FAILED
+  status        String    @default("GENERATING")
+  generatedAt   DateTime?
+  fileSizeBytes Int?
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  handoffs tbl_ProductionHandoff[]
+}
+
+// ============================================================
+// 13 · PRODUCTION RULE  (Feature 10 — Merchant routing rules)
+// ============================================================
+
+model tbl_ProductionRule {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop        String
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  // Lower number = higher priority
+  priority Int @default(100)
+
+  // [{ field, operator, value }] — e.g. { field: "material", operator: "eq", value: "leather" }
+  conditions Json[]
+
+  // Values: INTERNAL_QUEUE | SUPPLIER_API | EMAIL | WEBHOOK | TAG
+  destination       String
+  // Endpoint URL, queue name, email address, webhook config, etc.
+  destinationConfig Json
+
+  // Order tags applied to matching orders for downstream workflows
+  orderTags String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  handoffs tbl_ProductionHandoff[]
+}
+
+// ============================================================
+// 14 · PRODUCTION HANDOFF  (Feature 10 — Routing action audit log)
+// ============================================================
+
+model tbl_ProductionHandoff {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop           String
+  shopifyOrderId String
+
+  designId String?     @db.ObjectId
+  design   tbl_Design? @relation(fields: [designId], references: [id])
+
+  productionFileId String?             @db.ObjectId
+  productionFile   tbl_ProductionFile? @relation(fields: [productionFileId], references: [id])
+
+  ruleId String?             @db.ObjectId
+  rule   tbl_ProductionRule? @relation(fields: [ruleId], references: [id])
+
+  destination String
+  // Values: PENDING | SENT | ACKNOWLEDGED | FAILED
+  status      String @default("PENDING")
+
+  sentAt         DateTime?
+  acknowledgedAt DateTime?
+
+  retryCount      Int     @default(0)
+  lastError       String?
+  responsePayload Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// 15 · PRODUCT CUSTOMIZATION CONFIG  (Features 3, 4, 5 — Per-product specs)
+// ============================================================
+
+model tbl_ProductCustomizationConfig {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop             String
+  shopifyProductId String
+  // Null = applies to all variants; set to override for a specific variant
+  shopifyVariantId String?
+
+  // Print area dimensions
+  printAreaWidthMm  Float
+  printAreaHeightMm Float
+  printAreaWidthPx  Int
+  printAreaHeightPx Int
+
+  // Resolution requirements (Feature 4)
+  minDpi         Int @default(150)
+  recommendedDpi Int @default(300)
+
+  // Accepted upload formats (Feature 4)
+  allowedFormats    String[]
+  allowedColorModes String[]
+
+  // Production output spec (Feature 3)
+  // Values: PDF | PNG | AI | EPS
+  productionFormat   String @default("PDF")
+  productionWidthMm  Float
+  productionHeightMm Float
+  bleedMm            Float?
+
+  // Feasibility rules (Feature 5): [{ ruleCode, description, condition }]
+  feasibilityRules Json[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shop, shopifyProductId, shopifyVariantId])
+}
+
+// ============================================================
+// 16 · MERCHANT SETTINGS  (Global per-shop configuration)
+// ============================================================
+
+model tbl_MerchantSettings {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop String @unique
+
+  // Feature 9 — Design Library
+  designRetentionDays Int     @default(365)
+  libraryEnabled      Boolean @default(true)
+
+  // Feature 2 — Proof Approval
+  proofApprovalRequired Boolean @default(true)
+  proofExpiryHours      Int     @default(48)
+
+  // Feature 1 — Save & Share
+  shareLinksEnabled    Boolean @default(true)
+  shareLinkExpiryHours Int?
+
+  // Feature 4 — Artwork Checker
+  artworkCheckerEnabled Boolean @default(true)
+
+  // Feature 5 — Feasibility Checker
+  feasibilityCheckerEnabled Boolean @default(true)
+
+  // Feature 6 — Order Timeline Notifications
+  timelineNotificationsEnabled Boolean @default(true)
+  // Per-event email toggle map: { PROOF_READY: true, SHIPPED: true, ... }
+  customerEmailNotifications   Json?
+
+  // Feature 10 — Production Handoff
+  productionHandoffEnabled Boolean @default(true)
+  // Values: PDF | PNG | AI | EPS
+  defaultProductionFormat  String  @default("PDF")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
