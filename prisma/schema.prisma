@@ -178,31 +178,50 @@ model tbl_DesignLibraryItem {
 model tbl_ArtworkCheck {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  designId String     @db.ObjectId
-  design   tbl_Design @relation(fields: [designId], references: [id])
+  shop             String?
+  shopifyProductId String?
+  shopifyVariantId String?
+  printAreaName    String?             @default("default")
+
+  // Optional design relation: when check is performed on a pre-existing design
+  designId String?     @db.ObjectId
+  design   tbl_Design? @relation(fields: [designId], references: [id])
 
   revisionId String?             @db.ObjectId
   revision   tbl_DesignRevision? @relation(fields: [revisionId], references: [id])
 
-  assetUrl String
+  assetUrl String?
+  fileName String?
+  fileSizeBytes Int?
+  mimeType      String?
 
   // Values: PENDING | PASSED | WARNED | FAILED
   status String @default("PENDING")
+  overallQualityScore Float?
 
   // Detected properties
   resolutionDpi Float?
+  effectiveDpi  Float?
   widthPx       Int?
   heightPx      Int?
+  aspectRatio   Float?
+  blurScore     Float?
+  isBlurry      Boolean?
   colorMode     String?
   fileFormat    String?
 
-  // Issues found: [{ code, severity, message, suggestion }]
-  issues Json[]
+  // Issues and actionable fixes found
+  issues         Json[]
+  warnings       Json[]
+  suggestedFixes Json[]
 
   // Required specs (pulled from ProductCustomizationConfig at check time)
-  requiredDpi      Float?
-  requiredWidthPx  Int?
-  requiredHeightPx Int?
+  requiredDpi          Float?
+  requiredMinDpi       Float?
+  requiredWidthPx      Int?
+  requiredHeightPx     Int?
+  targetAspectRatio    Float?
+  aspectRatioTolerance Float?
 
   checkedAt DateTime @default(now())
 }
@@ -214,24 +233,38 @@ model tbl_ArtworkCheck {
 model tbl_FeasibilityCheck {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  designId String     @db.ObjectId
-  design   tbl_Design @relation(fields: [designId], references: [id])
+  shop             String?
+  shopifyProductId String
+  shopifyVariantId String?
+
+  // Optional design relation: when check is performed on a pre-existing design session
+  designId String?     @db.ObjectId
+  design   tbl_Design? @relation(fields: [designId], references: [id])
 
   revisionId String?             @db.ObjectId
   revision   tbl_DesignRevision? @relation(fields: [revisionId], references: [id])
 
-  // Values: PENDING | PASSED | FAILED
-  status String @default("PENDING")
+  // Boolean verdict and status
+  isFeasible Boolean @default(true)
+  // Values: PASSED | BLOCKED | WARNED
+  status     String  @default("PASSED")
 
-  // [{ ruleCode, description, affectedOption }]
-  blockers Json[]
-  // Non-blocking issues
-  warnings Json[]
+  // Production blockers: [{ ruleCode, type, field, message, currentValue, limit, suggestedFix }]
+  violations     Json[]
+  // Non-blocking manufacturing advisories
+  warnings       Json[]
+  // Actionable remediation steps for the shopper
+  suggestedFixes Json[]
 
-  // Snapshot of the options that were validated
-  validatedOptions Json
+  // Snapshot of the full customer configuration tested (materials, dimensions, placement, options)
+  validatedConfig Json
 
+  // Performance telemetry
+  executionTimeMs Float?
   checkedAt DateTime @default(now())
+
+  @@index([shopifyProductId])
+  @@index([shop, shopifyProductId])
 }
 
 // ============================================================
@@ -383,6 +416,40 @@ model tbl_OrderTimelineEvent {
 }
 
 // ============================================================
+// 10B · CUSTOM ORDER TIMELINE (Feature 6 — Order Progress Updates)
+// ============================================================
+
+enum OrderTimelineStage {
+  DESIGN_RECEIVED
+  PROOF_READY
+  APPROVED
+  IN_PRODUCTION
+  SHIPPED
+}
+
+type TimelineHistoryEntry {
+  stage     OrderTimelineStage
+  message   String
+  timestamp DateTime           @default(now())
+  metadata  Json?
+}
+
+model CustomOrderTimeline {
+  id             String                 @id @default(auto()) @map("_id") @db.ObjectId
+  shopifyOrderId String                 @unique
+  customerEmail  String
+  currentStage   OrderTimelineStage     @default(DESIGN_RECEIVED)
+  history        TimelineHistoryEntry[]
+  metadata       Json?
+  shop           String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([customerEmail])
+  @@index([shopifyOrderId])
+}
+
+// ============================================================
 // 12 · PRODUCTION FILE  (Feature 3 — Print-ready generated files)
 // ============================================================
 
@@ -499,26 +566,41 @@ model tbl_ProductCustomizationConfig {
   // Null = applies to all variants; set to override for a specific variant
   shopifyVariantId String?
 
-  // Print area dimensions
+  // Named print zone (e.g., "front", "back", "sleeve", "default")
+  printAreaName     String @default("default")
+
+  // Physical print area dimensions (in millimeters)
   printAreaWidthMm  Float
   printAreaHeightMm Float
+
+  // Target raster canvas dimensions (in pixels)
   printAreaWidthPx  Int
   printAreaHeightPx Int
 
-  // Resolution requirements (Feature 4)
-  minDpi         Int @default(150)
-  recommendedDpi Int @default(300)
+  // Optional explicit minimum pixel constraints
+  minWidthPx  Int?
+  minHeightPx Int?
+
+  // Resolution requirements in DPI (Feature 4: Artwork Quality Checker)
+  minDpi         Int  @default(150)
+  recommendedDpi Int  @default(300)
+  maxDpi         Int? @default(1200)
+
+  // Quality validation thresholds
+  blurThreshold        Float @default(100.0) // Variance of Laplacian threshold (lower = blurrier)
+  aspectRatioTolerance Float @default(0.05)  // 5% variance allowed before warning about aspect ratio mismatch
+  maxFileSizeBytes     Int   @default(26214400) // 25 MB default limit
 
   // Accepted upload formats (Feature 4)
-  allowedFormats    String[]
-  allowedColorModes String[]
+  allowedFormats    String[] @default(["image/png", "image/jpeg", "image/webp", "image/tiff"])
+  allowedColorModes String[] @default(["rgb", "srgb", "cmyk"])
 
   // Production output spec (Feature 3)
   // Values: PDF | PNG | AI | EPS
   productionFormat   String @default("PDF")
   productionWidthMm  Float
   productionHeightMm Float
-  bleedMm            Float?
+  bleedMm            Float? @default(3.0)
 
   // Feasibility rules (Feature 5): [{ ruleCode, description, condition }]
   feasibilityRules Json[]
@@ -526,7 +608,58 @@ model tbl_ProductCustomizationConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([shop, shopifyProductId, shopifyVariantId, printAreaName])
+}
+
+// ============================================================
+// 15B · PRODUCT MANUFACTURING CONSTRAINT (Feature 5 — Feasibility Rules)
+// ============================================================
+
+model tbl_ProductManufacturingConstraint {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  shop             String
+  shopifyProductId String
+  // Null = applies globally to product; non-null = variant-specific override
+  shopifyVariantId String?
+
+  // Physical printable dimensions limits (in millimeters)
+  maxPrintWidthMm  Float
+  maxPrintHeightMm Float
+  minPrintWidthMm  Float   @default(10.0)
+  minPrintHeightMm Float   @default(10.0)
+  maxBleedMm       Float   @default(5.0)
+
+  // Coordinate boundaries for design placement (in millimeters or coordinate units)
+  // Format: { minX: Float, minY: Float, maxX: Float, maxY: Float }
+  allowedPlacementBounds Json?
+
+  // Whitelisted and blacklisted materials
+  availableMaterials  String[] @default([])
+  restrictedMaterials String[] @default([])
+
+  // Incompatible option matrix:
+  // e.g. [{ optionA: { name: "material", value: "leather" }, optionB: { name: "technique", value: "sublimation" }, reason: "...", suggestedFix: "..." }]
+  incompatibleOptions Json[]
+
+  // Material and color / finish restrictions:
+  // e.g. [{ material: "black_cotton", disallowedColors: ["black", "dark_grey"], disallowedFinishes: ["gloss_foil"], reason: "...", suggestedFix: "..." }]
+  restrictedMaterialColors Json[]
+
+  // Supported manufacturing techniques (e.g., ["DTG", "EMBROIDERY", "SCREEN_PRINT", "UV_PRINT", "LASER_ENGRAVE"])
+  allowedPrintMethods String[] @default(["DTG", "SCREEN_PRINT"])
+
+  // Technique-specific physical constraints (e.g. Embroidery minTextHeightMm: 5.0, maxColors: 6)
+  methodConstraints Json?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([shop, shopifyProductId, shopifyVariantId])
+  @@index([shopifyProductId])
+  @@index([shop, shopifyProductId])
 }
 
 // ============================================================
