@@ -51,7 +51,6 @@ const customOrderTimelineSchema = new mongoose.Schema(
       required: [true, 'shopifyOrderId is required'],
       unique: true,
       trim: true,
-      index: true,
     },
     customerEmail: {
       type: String,
@@ -87,9 +86,6 @@ const customOrderTimelineSchema = new mongoose.Schema(
     collection: 'tbl_CustomOrderTimeline',
   },
 );
-
-customOrderTimelineSchema.index({ shopifyOrderId: 1 });
-customOrderTimelineSchema.index({ customerEmail: 1 });
 
 export const CustomOrderTimeline =
   mongoose.models.CustomOrderTimeline ||
