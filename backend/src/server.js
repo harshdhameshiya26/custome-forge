@@ -2,7 +2,6 @@
 
 import dotenv from 'dotenv';
 import path from 'path';
-import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import app from './app.js';
 import connectDB from './config/db.js';
@@ -12,6 +11,8 @@ import DesignFeedback from './models/design-feedback.model.js';
 import GuestSession from './models/guest-session.model.js';
 import DesignLibraryItem from './models/design-library-item.model.js';
 import MerchantSettings from './models/merchant-settings.model.js';
+import Proof from './models/proof.model.js';
+import Comment from './models/comment.model.js';
 import { logSuccess, logError, logWarn } from './utils/logger.js';
 import freePort from './utils/free-port.js';
 
@@ -43,6 +44,8 @@ const startServer = async () => {
       GuestSession.createIndexes(),
       DesignLibraryItem.createIndexes(),
       MerchantSettings.createIndexes(),
+      Proof.createIndexes(),
+      Comment.createIndexes(),
     ]);
 
     // 3. Proactively ensure port is available

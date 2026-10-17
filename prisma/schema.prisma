@@ -450,6 +450,88 @@ model CustomOrderTimeline {
 }
 
 // ============================================================
+// 10C · PROOF APPROVAL BEFORE PRODUCTION (Feature 2)
+// ============================================================
+
+enum ProofStatus {
+  PENDING_APPROVAL
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+type ProofComment {
+  id        String   @default(uuid())
+  author    String
+  role      String   @default("CUSTOMER")
+  message   String
+  createdAt DateTime @default(now())
+}
+
+type ProofRevisionLog {
+  action      String
+  performedBy String
+  note        String?
+  timestamp   DateTime @default(now())
+  metadata    Json?
+}
+
+model Proof {
+  id                String             @id @default(auto()) @map("_id") @db.ObjectId
+  proofId           String             @unique @default(uuid())
+  orderId           String
+  shopifyOrderId    String?
+  designId          String?
+  versionNumber     Int                @default(1)
+  status            ProofStatus        @default(PENDING_APPROVAL)
+  secureToken       String             @unique
+  previewUrl        String?
+  title             String?            @default("Custom Product Design Proof")
+  productionBlocked Boolean            @default(true)
+  approvedAt        DateTime?
+  approvedBy        String?
+  decisionNote      String?
+  comments          ProofComment[]
+  revisionLogs      ProofRevisionLog[]
+  metadata          Json?
+  shop              String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([orderId])
+  @@index([shopifyOrderId])
+  @@index([designId])
+  @@index([secureToken])
+}
+
+// ============================================================
+// 10D · CUSTOMER-MERCHANT DESIGN COMMENTS (Feature 7)
+// ============================================================
+
+enum AuthorRole {
+  CUSTOMER
+  MERCHANT
+}
+
+model Comment {
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  commentId       String      @unique @default(uuid())
+  proofId         String
+  parentCommentId String?
+  authorId        String
+  authorName      String?
+  authorRole      AuthorRole  @default(CUSTOMER)
+  content         String
+  attachments     String[]    @default([])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([proofId])
+  @@index([parentCommentId])
+  @@index([authorId])
+  @@index([proofId, createdAt])
+}
+
+// ============================================================
 // 12 · PRODUCTION FILE  (Feature 3 — Print-ready generated files)
 // ============================================================
 

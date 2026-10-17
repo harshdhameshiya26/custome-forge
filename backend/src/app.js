@@ -7,6 +7,8 @@ import libraryRoutes from './routes/design-library.routes.js';
 import artworkRoutes from './routes/artwork.routes.js';
 import productRoutes from './routes/product.routes.js';
 import orderRoutes from './routes/order.routes.js';
+import proofRoutes from './routes/proof.routes.js';
+import commentRoutes from './routes/comment.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import { logError } from './utils/logger.js';
 
@@ -75,6 +77,12 @@ app.use('/api/products', productRoutes);
 
 // Feature 6 — Custom Order Status Timeline
 app.use('/api/orders', orderRoutes);
+
+// Feature 2 — Proof Approval Before Production
+app.use('/api/proofs', proofRoutes);
+
+// Feature 7 — Customer-Merchant Design Comments
+app.use('/api/comments', commentRoutes);
 
 // Shopify Webhooks
 app.use('/api/webhooks', webhookRoutes);
