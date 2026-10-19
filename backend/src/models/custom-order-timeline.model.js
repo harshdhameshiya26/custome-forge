@@ -66,6 +66,22 @@ const customOrderTimelineSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    assignedQueue: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    supplierId: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
     history: {
       type: [timelineHistoryEntrySchema],
       default: [],

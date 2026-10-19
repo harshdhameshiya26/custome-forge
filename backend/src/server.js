@@ -13,6 +13,10 @@ import DesignLibraryItem from './models/design-library-item.model.js';
 import MerchantSettings from './models/merchant-settings.model.js';
 import Proof from './models/proof.model.js';
 import Comment from './models/comment.model.js';
+import PrintFile from './models/print-file.model.js';
+import RoutingRule from './models/routing-rule.model.js';
+import CustomOrder from './models/custom-order.model.js';
+import Subscription from './models/subscription.model.js';
 import { logSuccess, logError, logWarn } from './utils/logger.js';
 import freePort from './utils/free-port.js';
 
@@ -46,6 +50,10 @@ const startServer = async () => {
       MerchantSettings.createIndexes(),
       Proof.createIndexes(),
       Comment.createIndexes(),
+      PrintFile.createIndexes(),
+      RoutingRule.createIndexes(),
+      CustomOrder.createIndexes(),
+      Subscription.createIndexes(),
     ]);
 
     // 3. Proactively ensure port is available

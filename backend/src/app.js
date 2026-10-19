@@ -9,7 +9,12 @@ import productRoutes from './routes/product.routes.js';
 import orderRoutes from './routes/order.routes.js';
 import proofRoutes from './routes/proof.routes.js';
 import commentRoutes from './routes/comment.routes.js';
+import printRoutes from './routes/print.routes.js';
+import ruleRoutes from './routes/rule.routes.js';
+import billingRoutes from './routes/billing.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
+import { createNotification } from './services/notificationService.js';
 import { logError } from './utils/logger.js';
 
 const app = express();
@@ -84,8 +89,20 @@ app.use('/api/proofs', proofRoutes);
 // Feature 7 — Customer-Merchant Design Comments
 app.use('/api/comments', commentRoutes);
 
+// Feature 3 — Print-Ready File Generator
+app.use('/api/print', printRoutes);
+
+// Feature 10 — Production Handoff Rules
+app.use('/api/rules', ruleRoutes);
+
+// Feature: Shopify Billing API Integration
+app.use('/api/billing', billingRoutes);
+
 // Shopify Webhooks
 app.use('/api/webhooks', webhookRoutes);
+
+// Feature: Centralized Application Notification System (Top-Right Slide-In Panel)
+app.use('/api/notifications', notificationRoutes);
 
 // -----------------------------------------------------------------------------
 // 5. 404 Route Not Found Handler
@@ -108,6 +125,37 @@ app.use((err, req, res, next) => {
     err.statusCode ||
     err.status ||
     (res.statusCode >= 400 ? res.statusCode : 500);
+
+  // Automatically log critical execution errors as FEATURE_ERROR notifications in DB
+  const errorShop =
+    req.shop ||
+    req.shopDomain ||
+    req.shopifyProxy?.shop ||
+    req.get('x-shopify-shop-domain') ||
+    req.get('x-shop') ||
+    req.query?.shop ||
+    (req.body && typeof req.body === 'object' && req.body.shop) ||
+    process.env.SHOPIFY_SHOP ||
+    process.env.SHOP ||
+    null;
+
+  if (statusCode >= 500 && errorShop) {
+    const routeIdentifier = `${req.method} ${req.baseUrl || req.path}`;
+    const cleanMessage =
+      err.message && typeof err.message === 'string'
+        ? err.message
+        : 'An unexpected internal server error occurred while processing this action.';
+
+    createNotification({
+      shopDomain: errorShop,
+      type: 'FEATURE_ERROR',
+      severity: 'ERROR',
+      title: `Feature Error on ${routeIdentifier}`,
+      message: cleanMessage,
+    }).catch((notifErr) => {
+      logError(`⚠️ [Global Error Handler] Failed to persist FEATURE_ERROR notification: ${notifErr.message}`);
+    });
+  }
 
   res.status(statusCode).json({
     success: false,

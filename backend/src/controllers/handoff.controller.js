@@ -1,0 +1,57 @@
+/* eslint-env node */
+
+import { processOrderHandoff } from '../services/handoffService.js';
+import { logError } from '../utils/logger.js';
+
+/**
+ * @route   POST /api/orders/handoff/:orderId
+ * @desc    Triggers the automated production handoff process for an approved order.
+ *          Evaluates order attributes against active routing rules, assigns destination
+ *          queue/supplier, updates downstream tags, and records state in MongoDB.
+ * @access  Merchant / Internal Automation / Webhook
+ */
+export const triggerOrderHandoff = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId || !String(orderId).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'MISSING_ORDER_ID',
+          message: 'Parameter "orderId" is required in request path.',
+        },
+      });
+    }
+
+    const payload = req.body || {};
+
+    const result = await processOrderHandoff(orderId, payload);
+
+    return res.status(200).json({
+      success: true,
+      message: result.isMatched
+        ? `Order successfully routed to queue "${result.assignedQueue}" by rule "${result.matchedRule?.name}".`
+        : `Order routed to fallback queue "${result.assignedQueue}" (no specific rule matched).`,
+      data: result,
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: {
+          code: error.code || 'HANDOFF_ERROR',
+          message: error.message,
+          details: error.details || null,
+        },
+      });
+    }
+
+    logError(`❌ [HandoffController] Unexpected error: ${error.message}`);
+    next(error);
+  }
+};
+
+export default {
+  triggerOrderHandoff,
+};

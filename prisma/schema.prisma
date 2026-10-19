@@ -439,6 +439,9 @@ model CustomOrderTimeline {
   shopifyOrderId String                 @unique
   customerEmail  String
   currentStage   OrderTimelineStage     @default(DESIGN_RECEIVED)
+  assignedQueue  String?
+  supplierId     String?
+  tags           String[]               @default([])
   history        TimelineHistoryEntry[]
   metadata       Json?
   shop           String?
@@ -447,6 +450,8 @@ model CustomOrderTimeline {
 
   @@index([customerEmail])
   @@index([shopifyOrderId])
+  @@index([assignedQueue])
+  @@index([supplierId])
 }
 
 // ============================================================
@@ -570,6 +575,52 @@ model tbl_ProductionFile {
 }
 
 // ============================================================
+// 12B · PRINT FILE (Feature 3 — Print-Ready File Generator)
+// ============================================================
+
+enum PrintFileStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PrintFileFormat {
+  PDF
+  HIGH_RES_PNG
+  TIFF
+  SVG
+}
+
+model PrintFile {
+  id                  String          @id @default(auto()) @map("_id") @db.ObjectId
+  fileId              String          @unique @default(uuid())
+  orderId             String
+  designId            String
+  fileUrl             String
+  format              String          @default("HIGH_RES_PNG")
+  status              PrintFileStatus @default(PENDING)
+  widthMm             Float?
+  heightMm            Float?
+  dpi                 Int?            @default(300)
+  bleedMm             Float?          @default(0)
+  colorProfile        String?         @default("sRGB")
+  fileSizeBytes       Int?
+  fileName            String?
+  secureDownloadToken String?         @unique
+  secureDownloadUrl   String?
+  errorMessage        String?
+  metadata            Json?
+  completedAt         DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([orderId])
+  @@index([designId])
+  @@index([status])
+  @@index([fileId])
+}
+
+// ============================================================
 // 13 · PRODUCTION RULE  (Feature 10 — Merchant routing rules)
 // ============================================================
 
@@ -600,6 +651,66 @@ model tbl_ProductionRule {
 
   // Relations
   handoffs tbl_ProductionHandoff[]
+}
+
+// ============================================================
+// 13B · ROUTING RULE (Feature 10 — Production Handoff Rules)
+// ============================================================
+
+model RoutingRule {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  ruleId             String   @unique @default(uuid())
+  name               String
+  shop               String?
+  productType        String?
+  material           String?
+  customizationType  String?
+  targetQueue        String
+  supplierId         String?
+  tags               String[] @default([])
+  priority           Int      @default(100)
+  isActive           Boolean  @default(true)
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([shop])
+  @@index([isActive, priority])
+  @@index([productType])
+  @@index([material])
+  @@index([customizationType])
+}
+
+// ============================================================
+// 13C · CUSTOM ORDER (Feature 10 — Production Handoff Queue Storage)
+// ============================================================
+
+model CustomOrder {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  orderId           String    @unique
+  shopifyOrderId    String?   @unique
+  customerEmail     String?
+  designId          String?
+  productType       String?
+  material          String?
+  customizationType String?
+  assignedQueue     String?
+  supplierId        String?
+  tags              String[]  @default([])
+  status            String    @default("APPROVED")
+  handoffStatus     String    @default("PENDING")
+  routedRuleId      String?
+  routedAt          DateTime?
+  shop              String?
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([shopifyOrderId])
+  @@index([assignedQueue])
+  @@index([supplierId])
+  @@index([handoffStatus])
 }
 
 // ============================================================
@@ -783,4 +894,73 @@ model tbl_MerchantSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// 17 · SUBSCRIPTION & BILLING (Shopify Billing API Integration)
+// ============================================================
+
+enum SubscriptionStatus {
+  ACTIVE
+  PENDING
+  CANCELLED
+  EXPIRED
+}
+
+model Subscription {
+  id               String             @id @default(auto()) @map("_id") @db.ObjectId
+  shopDomain       String             @unique
+  subscriptionId   String?            @unique
+  planName         String             @default("Basic")
+  status           SubscriptionStatus @default(PENDING)
+  currentPeriodEnd DateTime?
+  test             Boolean            @default(false)
+  price            Float?             @default(0.0)
+  currency         String?            @default("USD")
+  interval         String?            @default("EVERY_30_DAYS")
+  confirmationUrl  String?
+  trialDays        Int?               @default(0)
+  activatedAt      DateTime?
+  cancelledAt      DateTime?
+  metadata         Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([shopDomain])
+  @@index([subscriptionId])
+  @@index([status])
+}
+
+// ============================================================
+// 18 · NOTIFICATION SYSTEM (Centralized Application Notifications)
+// ============================================================
+
+enum NotificationType {
+  BILLING_CHANGE
+  SUBSCRIPTION_CANCELLED
+  FEATURE_ERROR
+  SYSTEM_ALERT
+  ORDER_UPDATE
+}
+
+enum NotificationSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model Notification {
+  id         String               @id @default(auto()) @map("_id") @db.ObjectId
+  shopDomain String
+  type       NotificationType
+  severity   NotificationSeverity
+  title      String
+  message    String
+  read       Boolean              @default(false)
+  createdAt  DateTime             @default(now())
+
+  @@index([shopDomain])
+  @@index([shopDomain, read])
+  @@index([shopDomain, createdAt])
 }

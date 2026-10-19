@@ -5,6 +5,7 @@ import {
   getOrderTimeline,
   updateOrderTimelineStage,
 } from '../controllers/order.controller.js';
+import { triggerOrderHandoff } from '../controllers/handoff.controller.js';
 
 const router = Router();
 
@@ -27,5 +28,13 @@ router.get('/timeline/:orderId', getOrderTimeline);
  *          - metadata: (Object, optional tracking number, carrier, proof URL, etc.)
  */
 router.patch('/timeline/:orderId/stage', updateOrderTimelineStage);
+
+/**
+ * @route   POST /api/orders/handoff/:orderId
+ * @desc    Trigger automated production handoff: evaluates routing rules by productType, material,
+ *          and customizationType, assigns destination queue/supplier, and applies workflow tags.
+ * @access  Merchant / Production floor / Automated webhooks
+ */
+router.post('/handoff/:orderId', triggerOrderHandoff);
 
 export default router;
