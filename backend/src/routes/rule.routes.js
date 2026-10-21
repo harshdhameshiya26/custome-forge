@@ -8,6 +8,7 @@ import {
   updateRule,
   deleteRule,
 } from '../controllers/rule.controller.js';
+import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = express.Router();
 
@@ -31,6 +32,11 @@ const router = express.Router();
  * 5. DELETE /api/rules/:id
  *    Delete a routing rule by ID or ruleId.
  */
+
+import { verifyRole } from '../middleware/auth.middleware.js';
+
+// All routing rule endpoints are merchant-only — require verified merchant user session
+router.use(authenticateUser, requireVerifiedUser, verifyRole(['merchant']));
 
 router.post('/', createRule);
 router.get('/', getRules);

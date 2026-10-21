@@ -36,7 +36,7 @@ export const DEFAULT_PLANS = Object.freeze({
  * Normalizes shop domain strings (e.g. "my-store.myshopify.com").
  */
 export const normalizeShopDomain = (rawShop) => {
-  if (!rawShop) return 'custome-forge.myshopify.com';
+  if (!rawShop) return process.env.SHOPIFY_SHOP || '';
   let shop = String(rawShop).trim().toLowerCase();
   shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   if (!shop.includes('.')) {
@@ -126,14 +126,7 @@ export const executeShopifyGraphQL = async ({
   const normalizedShop = normalizeShopDomain(shop);
   const token = accessToken || (await getShopAccessToken(normalizedShop));
 
-  // Postman/Development graceful mock mode if no live access token is available
   if (!token) {
-    if (process.env.NODE_ENV !== 'production') {
-      logWarn(
-        `⚠️ [BillingService] No Shopify access token found for "${normalizedShop}". Running in simulated development mode.`,
-      );
-      return { isMock: true, shop: normalizedShop };
-    }
     const err = new Error(
       `No valid Shopify access token found for store "${normalizedShop}". Store must complete OAuth installation.`,
     );
@@ -334,24 +327,17 @@ export const createAppSubscription = async ({
   let confirmationUrl = null;
   let subscriptionId = null;
 
-  if (responseData.isMock) {
-    // Simulated charge for development/Postman testing
-    const mockChargeNumber = Math.floor(10000000 + Math.random() * 90000000);
-    subscriptionId = `gid://shopify/AppSubscription/${mockChargeNumber}`;
-    confirmationUrl = `https://${shop}/admin/charges/${mockChargeNumber}/confirm_recurring_application_charge?signature=simulated_test_charge`;
-  } else {
-    const result = responseData.appSubscriptionCreate;
-    if (result.userErrors && result.userErrors.length > 0) {
-      const errorMsg = result.userErrors.map((u) => `${u.field}: ${u.message}`).join(', ');
-      const err = new Error(`Shopify appSubscriptionCreate rejected: ${errorMsg}`);
-      err.statusCode = 422;
-      err.details = result.userErrors;
-      throw err;
-    }
-
-    confirmationUrl = result.confirmationUrl;
-    subscriptionId = result.appSubscription?.id;
+  const result = responseData.appSubscriptionCreate;
+  if (result.userErrors && result.userErrors.length > 0) {
+    const errorMsg = result.userErrors.map((u) => `${u.field}: ${u.message}`).join(', ');
+    const err = new Error(`Shopify appSubscriptionCreate rejected: ${errorMsg}`);
+    err.statusCode = 422;
+    err.details = result.userErrors;
+    throw err;
   }
+
+  confirmationUrl = result.confirmationUrl;
+  subscriptionId = result.appSubscription?.id;
 
   // Persist local PENDING subscription record
   await upsertSubscriptionRecord({
@@ -431,21 +417,19 @@ export const verifyAndActivateSubscription = async ({
       variables: { id: fullSubscriptionId || 'gid://shopify/AppSubscription/0' },
     });
 
-    if (!data.isMock) {
-      const nodeSub = data.node;
-      const activeSubs = data.appInstallation?.activeSubscriptions || [];
+    const nodeSub = data.node;
+    const activeSubs = data.appInstallation?.activeSubscriptions || [];
 
-      const matchedSub =
-        nodeSub ||
-        activeSubs.find((s) => s.id === fullSubscriptionId) ||
-        activeSubs[0];
+    const matchedSub =
+      nodeSub ||
+      activeSubs.find((s) => s.id === fullSubscriptionId) ||
+      activeSubs[0];
 
-      if (matchedSub) {
-        shopifyStatus = matchedSub.status;
-        currentPeriodEnd = matchedSub.currentPeriodEnd ? new Date(matchedSub.currentPeriodEnd) : currentPeriodEnd;
-        isTest = Boolean(matchedSub.test);
-        planName = matchedSub.name?.replace('CustomForge ', '')?.replace(' Plan', '') || planName;
-      }
+    if (matchedSub) {
+      shopifyStatus = matchedSub.status;
+      currentPeriodEnd = matchedSub.currentPeriodEnd ? new Date(matchedSub.currentPeriodEnd) : currentPeriodEnd;
+      isTest = Boolean(matchedSub.test);
+      planName = matchedSub.name?.replace('CustomForge ', '')?.replace(' Plan', '') || planName;
     }
   } catch (err) {
     logWarn(`⚠️ GraphQL subscription verification fallback: ${err.message}`);
@@ -535,12 +519,10 @@ export const cancelAppSubscription = async ({
       variables: { id: targetId, prorate: Boolean(prorate) },
     });
 
-    if (!data.isMock) {
-      const result = data.appSubscriptionCancel;
-      if (result.userErrors && result.userErrors.length > 0) {
-        const errorMsg = result.userErrors.map((u) => `${u.field}: ${u.message}`).join(', ');
-        logWarn(`⚠️ Shopify cancel userErrors: ${errorMsg}`);
-      }
+    const result = data.appSubscriptionCancel;
+    if (result.userErrors && result.userErrors.length > 0) {
+      const errorMsg = result.userErrors.map((u) => `${u.field}: ${u.message}`).join(', ');
+      logWarn(`⚠️ Shopify cancel userErrors: ${errorMsg}`);
     }
   } catch (err) {
     logWarn(`⚠️ GraphQL cancellation warning: ${err.message}. Marking local DB record as CANCELLED.`);

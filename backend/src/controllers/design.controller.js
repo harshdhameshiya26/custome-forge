@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import Design from '../models/design.model.js';
 import DesignRevision from '../models/design-revision.model.js';
 import DesignFeedback from '../models/design-feedback.model.js';
-import { logError } from '../utils/logger.js';
+import { logError, logSuccess, logWarn } from '../utils/logger.js';
 
 const MAX_CANVAS_BYTES = 8 * 1024 * 1024;
 const MAX_REVISIONS = 20;
@@ -319,11 +319,11 @@ export const getSharedDesign = async (request, response, next) => {
       throw makeHttpError(404, 'Shared design not found.');
     }
 
-    const shop = request.shop || request.shopifyProxy?.shop || 'custome-forge.myshopify.com';
-    const design = await Design.findOne({
-      shop,
+    const designQuery = {
       shareTokenHash: hashShareToken(token),
-    }).lean();
+      ...(request.shop ? { shop: request.shop } : {}),
+    };
+    const design = await Design.findOne(designQuery).lean();
     if (!design) throw makeHttpError(404, 'Shared design not found.');
 
     return response.status(200).json({
@@ -437,11 +437,11 @@ export const submitSharedFeedback = async (request, response, next) => {
       throw makeHttpError(404, 'Shared design not found.');
     }
 
-    const shop = request.shop || request.shopifyProxy?.shop || 'custome-forge.myshopify.com';
-    const design = await Design.findOne({
-      shop,
+    const designQuery = {
       shareTokenHash: hashShareToken(token),
-    }).select('_id shop');
+      ...(request.shop ? { shop: request.shop } : {}),
+    };
+    const design = await Design.findOne(designQuery).select('_id shop');
     if (!design) throw makeHttpError(404, 'Shared design not found.');
 
     const message =
@@ -479,11 +479,11 @@ export const listSharedFeedback = async (request, response, next) => {
     if (!/^[A-Za-z0-9_-]{40,}$/.test(token)) {
       throw makeHttpError(404, 'Shared design not found.');
     }
-    const shop = request.shop || request.shopifyProxy?.shop || 'custome-forge.myshopify.com';
-    const design = await Design.findOne({
-      shop,
+    const designQuery = {
       shareTokenHash: hashShareToken(token),
-    }).select('_id');
+      ...(request.shop ? { shop: request.shop } : {}),
+    };
+    const design = await Design.findOne(designQuery).select('_id');
     if (!design) throw makeHttpError(404, 'Shared design not found.');
 
     const feedback = await DesignFeedback.find({
@@ -551,3 +551,264 @@ export const moderateFeedback = async (request, response, next) => {
     return next(error);
   }
 };
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * DESIGN & RESUME WORKFLOWS
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+/**
+ * Resume a custom canvas state across sessions.
+ * Allows retrieving by design ID or by customer's active design for a given product.
+ */
+export const resumeDesign = async (request, response, next) => {
+  try {
+    const { id } = request.params;
+    const { productId, shop } = request.query;
+
+    let query = {};
+
+    if (id && mongoose.isValidObjectId(id)) {
+      query._id = id;
+    } else if (productId) {
+      query.productId = String(productId).trim();
+      const customerId = request.user?._id || request.user?.shopifyCustomerId || request.shopper?.customerId;
+      const sessionId = request.shopper?.sessionId || request.query.sessionId;
+
+      if (customerId) {
+        query.$or = [{ customerId: String(customerId) }, { customerId: request.user?.shopifyCustomerId }];
+      } else if (sessionId) {
+        query.sessionId = sessionId;
+      }
+      if (shop) query.shop = String(shop).trim().toLowerCase();
+    } else {
+      throw makeHttpError(400, 'Please provide a design ID in URL path or productId in query params.');
+    }
+
+    const design = await Design.findOne(query)
+      .sort({ updatedAt: -1 })
+      .select('+shareTokenHash')
+      .lean();
+
+    if (!design) {
+      return response.status(404).json({
+        success: false,
+        message: 'No saved canvas state found for the specified criteria.',
+      });
+    }
+
+    return response.status(200).json({
+      success: true,
+      message: 'Design canvas state resumed successfully.',
+      data: {
+        designId: design._id,
+        productId: design.productId,
+        title: design.title,
+        canvasState: design.canvasState,
+        thumbnailUrl: design.thumbnailUrl,
+        version: design.version,
+        status: design.status,
+        isTemplate: Boolean(design.isTemplate),
+        templateCategory: design.templateCategory,
+        updatedAt: design.updatedAt,
+      },
+    });
+  } catch (error) {
+    logError(`[resumeDesign] ${error.message}`);
+    return next(error);
+  }
+};
+
+/**
+ * Generate a shareable feedback token for a design.
+ */
+export const generateShareToken = async (request, response, next) => {
+  try {
+    const { id } = request.params;
+    if (!mongoose.isValidObjectId(id)) {
+      throw makeHttpError(400, 'Design ID is invalid.');
+    }
+
+    const design = await Design.findById(id).select('+shareTokenHash');
+    if (!design) throw makeHttpError(404, 'Design not found.');
+
+    const shareToken = createShareToken();
+    design.shareTokenHash = hashShareToken(shareToken);
+    if (design.status === 'draft') design.status = 'shared';
+    await design.save();
+
+    return response.status(200).json({
+      success: true,
+      message: 'Shareable feedback token generated successfully.',
+      data: {
+        designId: design._id,
+        shareToken,
+        shareUrl: getShareUrl(request, shareToken),
+      },
+    });
+  } catch (error) {
+    logError(`[generateShareToken] ${error.message}`);
+    return next(error);
+  }
+};
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * DESIGNER & MERCHANT TEMPLATE & REVIEW WORKFLOWS
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+/**
+ * Create a reusable design template (Designers and Merchants).
+ */
+export const createTemplate = async (request, response, next) => {
+  try {
+    const { title, productId, templateCategory, canvasState, thumbnailUrl, shop } = request.body;
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      throw makeHttpError(400, 'Template title is required.');
+    }
+    if (!productId || typeof productId !== 'string' || !productId.trim()) {
+      throw makeHttpError(400, 'productId is required for template.');
+    }
+    validateCanvasState(canvasState);
+
+    const thumbnail = validateThumbnailUrl(thumbnailUrl);
+    const resolvedShop = shop || request.shop || request.user?.shop || process.env.SHOPIFY_SHOP || '';
+
+    const template = await Design.create({
+      title: title.trim(),
+      productId: productId.trim(),
+      shop: resolvedShop,
+      canvasState,
+      thumbnailUrl: thumbnail,
+      isTemplate: true,
+      templateCategory: templateCategory ? String(templateCategory).trim().toLowerCase() : 'general',
+      createdByRole: request.user?.role || 'designer',
+      createdByUserId: request.user?._id ? String(request.user._id) : null,
+      status: 'saved',
+      version: 1,
+    });
+
+    logSuccess(`[createTemplate] Template "${title}" created by ${request.user?.email || 'designer'}`);
+
+    return response.status(201).json({
+      success: true,
+      message: 'Design template created successfully.',
+      data: template,
+    });
+  } catch (error) {
+    logError(`[createTemplate] ${error.message}`);
+    return next(error);
+  }
+};
+
+/**
+ * List design templates with optional category filter.
+ */
+export const listTemplates = async (request, response, next) => {
+  try {
+    const { category, productId, shop } = request.query;
+    const filter = { isTemplate: true };
+
+    if (category) {
+      filter.templateCategory = String(category).trim().toLowerCase();
+    }
+    if (productId) {
+      filter.productId = String(productId).trim();
+    }
+    if (shop) {
+      filter.shop = String(shop).trim().toLowerCase();
+    }
+
+    const templates = await Design.find(filter).sort({ createdAt: -1 });
+
+    return response.status(200).json({
+      success: true,
+      count: templates.length,
+      data: templates,
+    });
+  } catch (error) {
+    logError(`[listTemplates] ${error.message}`);
+    return next(error);
+  }
+};
+
+/**
+ * Get a single template by ID.
+ */
+export const getTemplateById = async (request, response, next) => {
+  try {
+    const { id } = request.params;
+    if (!mongoose.isValidObjectId(id)) {
+      throw makeHttpError(400, 'Template ID is invalid.');
+    }
+
+    const template = await Design.findOne({ _id: id, isTemplate: true });
+    if (!template) {
+      throw makeHttpError(404, 'Template not found.');
+    }
+
+    return response.status(200).json({
+      success: true,
+      data: template,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/**
+ * Review, adjust, or modify a customer design canvas state (Designers & Merchants).
+ */
+export const reviewAndModifyDesign = async (request, response, next) => {
+  try {
+    const { id } = request.params;
+    const { canvasState, thumbnailUrl, changeNote, status } = request.body;
+
+    if (!mongoose.isValidObjectId(id)) {
+      throw makeHttpError(400, 'Design ID is invalid.');
+    }
+
+    const design = await Design.findById(id);
+    if (!design) {
+      throw makeHttpError(404, 'Design not found.');
+    }
+
+    if (canvasState !== undefined) {
+      validateCanvasState(canvasState);
+      design.canvasState = canvasState;
+      design.markModified('canvasState');
+    }
+
+    if (thumbnailUrl !== undefined) {
+      design.thumbnailUrl = validateThumbnailUrl(thumbnailUrl);
+    }
+
+    if (status && ['draft', 'saved', 'shared', 'submitted', 'approved'].includes(status)) {
+      design.status = status;
+    }
+
+    design.version += 1;
+    await design.save();
+
+    // Store version revision for audit trail
+    await storeRevision(design, null, {
+      changedBy: request.user?.role || 'merchant',
+      changeNote: changeNote || `Design reviewed and modified by ${request.user?.role || 'staff'}`,
+    });
+
+    logSuccess(`[reviewAndModifyDesign] Design ${id} reviewed by ${request.user?.email || 'staff'}`);
+
+    return response.status(200).json({
+      success: true,
+      message: 'Design canvas state reviewed and updated successfully.',
+      data: design,
+    });
+  } catch (error) {
+    logError(`[reviewAndModifyDesign] ${error.message}`);
+    return next(error);
+  }
+};
+

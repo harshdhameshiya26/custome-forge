@@ -2,7 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "library"
 }
 
 // Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
@@ -11,6 +12,57 @@ generator client {
 datasource db {
   provider = "mongodb"
   url      = env("MONGODB_URI")
+}
+
+// ============================================================
+// 00a · USER  (Email/Password authentication — CustomForge users)
+// ============================================================
+
+enum UserRole {
+  customer
+  designer
+  merchant
+  supplier
+}
+
+model tbl_User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  fullName  String
+  email     String   @unique
+  passwordHash String
+  isVerified   Boolean  @default(false)
+  role         UserRole @default(customer)
+  supplierCategory String?
+
+  // OTP for email verification / re-verification
+  otp            String?
+  otpExpiresAt   DateTime?
+  otpAttempts    Int       @default(0)
+  lockUntil      DateTime?
+  isBlocked      Boolean   @default(false)
+
+  // Refresh token (SHA-256 hash of the raw token)
+  refreshTokenHash String?
+
+  // Pending email address — staged during profile update, applied after OTP
+  pendingEmail String?
+
+  // Shopify customer linkage (optional)
+  shopifyCustomerId String?
+  shop              String?
+
+  // User preferences blob
+  preferences Json?
+
+  // Soft-deletion
+  deletedAt DateTime?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([email, deletedAt])
+  @@index([shop, shopifyCustomerId])
 }
 
 // ============================================================
@@ -449,9 +501,9 @@ model CustomOrderTimeline {
   updatedAt      DateTime               @updatedAt
 
   @@index([customerEmail])
-  @@index([shopifyOrderId])
   @@index([assignedQueue])
   @@index([supplierId])
+  @@map("tbl_CustomOrderTimeline")
 }
 
 // ============================================================
@@ -505,7 +557,7 @@ model Proof {
   @@index([orderId])
   @@index([shopifyOrderId])
   @@index([designId])
-  @@index([secureToken])
+  @@map("tbl_ProofRecords")
 }
 
 // ============================================================
@@ -534,6 +586,7 @@ model Comment {
   @@index([parentCommentId])
   @@index([authorId])
   @@index([proofId, createdAt])
+  @@map("tbl_ProofComments")
 }
 
 // ============================================================
@@ -617,7 +670,7 @@ model PrintFile {
   @@index([orderId])
   @@index([designId])
   @@index([status])
-  @@index([fileId])
+  @@map("tbl_print_files")
 }
 
 // ============================================================
@@ -679,6 +732,7 @@ model RoutingRule {
   @@index([productType])
   @@index([material])
   @@index([customizationType])
+  @@map("tbl_RoutingRule")
 }
 
 // ============================================================
@@ -706,11 +760,10 @@ model CustomOrder {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  @@index([orderId])
-  @@index([shopifyOrderId])
   @@index([assignedQueue])
   @@index([supplierId])
   @@index([handoffStatus])
+  @@map("tbl_CustomOrder")
 }
 
 // ============================================================
@@ -926,9 +979,8 @@ model Subscription {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
-  @@index([shopDomain])
-  @@index([subscriptionId])
   @@index([status])
+  @@map("tbl_Subscription")
 }
 
 // ============================================================
@@ -963,4 +1015,44 @@ model Notification {
   @@index([shopDomain])
   @@index([shopDomain, read])
   @@index([shopDomain, createdAt])
+  @@map("tbl_Notification")
 }
+
+// ============================================================
+// 19 · SUPPLIER PRODUCTION SCHEDULE (Supplier Scheduling System)
+// ============================================================
+
+enum ScheduleStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Schedule {
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  scheduleId       String         @unique @default(uuid())
+  supplierId       String
+  supplierEmail    String?
+  supplierName     String?
+  category         String         // e.g. "apparel", "leather", "drinkware", "metal"
+  designIds        String[]       // Strictly fixed between 25 and 100 designs
+  scheduledAt      DateTime
+  status           ScheduleStatus @default(PENDING)
+  merchantId       String?
+  merchantEmail    String?
+  otp              String?
+  otpExpiresAt     DateTime?
+  otpAttempts      Int            @default(0)
+  confirmedAt      DateTime?
+  sentToSupplierAt DateTime?
+  notes            String?
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([supplierId])
+  @@index([category])
+  @@index([status])
+  @@map("tbl_Schedule")
+}
+

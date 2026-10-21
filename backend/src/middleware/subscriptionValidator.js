@@ -23,10 +23,10 @@ export const verifyActiveSubscription = async (req, res, next) => {
       req.get('x-shopify-shop-domain') ||
       req.get('x-shop') ||
       req.query?.shop ||
-      (req.body && typeof req.body === 'object' && req.body.shop) ||
+      req.user?.shop ||
       process.env.SHOPIFY_SHOP ||
       process.env.SHOP ||
-      'custome-forge.myshopify.com';
+      '';
 
     const shopDomain = normalizeShopDomain(rawShop);
     req.shopDomain = shopDomain;

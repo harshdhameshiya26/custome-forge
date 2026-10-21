@@ -62,7 +62,7 @@ const notificationSchema = new mongoose.Schema(
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
-    collection: 'Notification',
+    collection: 'tbl_Notification',
     toJSON: {
       virtuals: true,
       transform: (doc, ret) => {

@@ -14,7 +14,7 @@ import {
 import {
   requireShopper,
   extractShopContext,
-} from '../middleware/shopify-proxy-auth.js';
+} from '../middleware/shopper-auth.js';
 
 const router = express.Router({ mergeParams: true });
 

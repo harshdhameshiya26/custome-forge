@@ -81,6 +81,33 @@ const designSchema = new mongoose.Schema(
       default: 'draft',
       index: true,
     },
+
+    // Designer & Merchant template support
+    isTemplate: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    title: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    templateCategory: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    createdByRole: {
+      type: String,
+      enum: ['customer', 'designer', 'merchant', 'supplier'],
+      default: 'customer',
+    },
+    createdByUserId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -108,9 +135,9 @@ const designSchema = new mongoose.Schema(
   }
 );
 
-// Require at least one owner identifier: customerId or sessionId
+// Require at least one owner identifier: customerId or sessionId (unless it is a template or created by designer/merchant)
 designSchema.pre('validate', function (next) {
-  if (!this.customerId && !this.sessionId) {
+  if (!this.customerId && !this.sessionId && !this.isTemplate && this.createdByRole === 'customer') {
     this.invalidate('customerId', 'At least one of customerId or sessionId is required to persist the design across sessions');
     this.invalidate('sessionId', 'At least one of customerId or sessionId is required to persist the design across sessions');
   }
@@ -120,6 +147,7 @@ designSchema.pre('validate', function (next) {
 // Optimized compound indexes for fast lookups during cross-session resume and sharing
 designSchema.index({ shop: 1, customerId: 1, productId: 1, updatedAt: -1 });
 designSchema.index({ shop: 1, sessionId: 1, productId: 1, updatedAt: -1 });
+designSchema.index({ isTemplate: 1, templateCategory: 1 });
 
 // Model registered as tbl_Design (with 'tbl_' naming convention)
 const Design = mongoose.models.tbl_Design || mongoose.model('tbl_Design', designSchema, 'tbl_designs');

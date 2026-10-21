@@ -5,6 +5,7 @@ import {
   createComment,
   getCommentsByProofId,
 } from '../controllers/comment.controller.js';
+import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = express.Router();
 
@@ -23,8 +24,8 @@ const router = express.Router();
  *    Returns both hierarchical thread trees (with nested replies) and chronological raw lists.
  */
 
-// Post a new comment linked to a proof
-router.post('/', createComment);
+// Post a new comment linked to a proof (requires authenticated user)
+router.post('/', authenticateUser, requireVerifiedUser, createComment);
 
 // Fetch all threaded comments for a specific proof
 router.get('/:proofId', getCommentsByProofId);

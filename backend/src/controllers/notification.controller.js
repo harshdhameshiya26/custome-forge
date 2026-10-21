@@ -19,7 +19,7 @@ const getRequestShop = (req) => {
   const raw =
     req.shop ||
     req.shopDomain ||
-    req.shopifyProxy?.shop ||
+    req.user?.shop ||
     req.get('x-shopify-shop-domain') ||
     req.get('x-shop') ||
     req.query?.shop ||

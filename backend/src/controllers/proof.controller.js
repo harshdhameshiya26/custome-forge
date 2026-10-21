@@ -5,6 +5,7 @@ import prisma from '../config/prisma.js';
 import Proof, { PROOF_STATUSES } from '../models/proof.model.js';
 import CustomOrderTimeline from '../models/custom-order-timeline.model.js';
 import { logError, logSuccess, logWarn } from '../utils/logger.js';
+import OtpService from '../services/otpService.js';
 
 /**
  * Custom HTTP Error Helper.
@@ -351,7 +352,6 @@ export const getProofBySecureToken = async (req, res, next) => {
  */
 export const submitProofResponse = async (req, res, next) => {
   try {
-    const { proofId } = req.params;
     const {
       status,
       action,
@@ -363,11 +363,14 @@ export const submitProofResponse = async (req, res, next) => {
     } = req.body;
 
     // 1. Input sanitization & normalization
-    if (!proofId || typeof proofId !== 'string' || !proofId.trim()) {
-      throw makeHttpError(400, 'Validation Error: proofId parameter is required.');
+    const { proofId, secureToken } = req.params;
+    const identifier = proofId || secureToken;
+
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
+      throw makeHttpError(400, 'Validation Error: proofId or secureToken parameter is required.');
     }
 
-    const cleanProofId = proofId.trim();
+    const cleanIdentifier = identifier.trim();
     const rawAction = status || action;
 
     if (!rawAction || typeof rawAction !== 'string') {
@@ -386,8 +389,13 @@ export const submitProofResponse = async (req, res, next) => {
     }
 
     const feedbackText = (comment || message || feedback || '').trim();
-    const cleanAuthor = (author && typeof author === 'string' && author.trim()) ? author.trim() : (role === 'MERCHANT' ? 'Merchant' : 'Customer');
-    const cleanRole = ['CUSTOMER', 'MERCHANT', 'SYSTEM'].includes(String(role).toUpperCase()) ? String(role).toUpperCase() : 'CUSTOMER';
+    const userDisplayName = req.user?.fullName || req.user?.email;
+    const cleanAuthor = (author && typeof author === 'string' && author.trim())
+      ? author.trim()
+      : (userDisplayName || (role === 'MERCHANT' ? 'Merchant' : 'Customer'));
+    const cleanRole = ['CUSTOMER', 'MERCHANT', 'SYSTEM'].includes(String(role).toUpperCase())
+      ? String(role).toUpperCase()
+      : (req.user?.role === 'merchant' ? 'MERCHANT' : 'CUSTOMER');
 
     // 2. Fetch current proof
     let existingProof = null;
@@ -398,8 +406,9 @@ export const submitProofResponse = async (req, res, next) => {
         existingProof = await prisma.proof.findFirst({
           where: {
             OR: [
-              { proofId: cleanProofId },
-              ...(/^[0-9a-fA-F]{24}$/.test(cleanProofId) ? [{ id: cleanProofId }] : []),
+              { proofId: cleanIdentifier },
+              { secureToken: cleanIdentifier },
+              ...(/^[0-9a-fA-F]{24}$/.test(cleanIdentifier) ? [{ id: cleanIdentifier }] : []),
             ],
           },
         });
@@ -410,17 +419,18 @@ export const submitProofResponse = async (req, res, next) => {
     }
 
     if (!existingProof) {
-      const isObjectId = /^[0-9a-fA-F]{24}$/.test(cleanProofId);
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(cleanIdentifier);
       existingProof = await Proof.findOne({
         $or: [
-          { proofId: cleanProofId },
-          ...(isObjectId ? [{ _id: cleanProofId }] : []),
+          { proofId: cleanIdentifier },
+          { secureToken: cleanIdentifier },
+          ...(isObjectId ? [{ _id: cleanIdentifier }] : []),
         ],
       });
     }
 
     if (!existingProof) {
-      throw makeHttpError(404, `Proof not found with identifier "${cleanProofId}".`);
+      throw makeHttpError(404, `Proof not found with identifier "${cleanIdentifier}".`);
     }
 
     // 3. Edge Case Handling: Already approved
@@ -477,6 +487,35 @@ export const submitProofResponse = async (req, res, next) => {
     let updatedRecord = null;
 
     if (normalizedStatus === 'APPROVED') {
+      // SENSITIVE ACTION GUARD: Require explicit email OTP verification before unblocking production
+      if (req.user?.email) {
+        const inputOtp = req.body?.otp || req.get('x-otp-code');
+        if (!inputOtp) {
+          const otpSend = await OtpService.generateAndSendOtp({
+            email: req.user.email,
+            action: 'PROOF_APPROVAL',
+            referenceId: existingProof.proofId,
+            fullName: cleanAuthor,
+          });
+
+          return res.status(403).json({
+            success: false,
+            requireOtp: true,
+            message: `OTP verification required before finalizing proof approval. A 6-digit confirmation code has been dispatched to ${req.user.email}.`,
+            proofId: existingProof.proofId,
+            expiresInSeconds: otpSend.expiresInSeconds,
+          });
+        }
+
+        // Verify the provided OTP code
+        await OtpService.verifyOtp({
+          email: req.user.email,
+          action: 'PROOF_APPROVAL',
+          referenceId: existingProof.proofId,
+          otp: inputOtp,
+        });
+      }
+
       // APPROVAL PATH: Production is unlocked
       const updateData = {
         status: 'APPROVED',
@@ -665,3 +704,107 @@ export const getProofsByOrderId = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * POST /api/proofs/:proofId/request-otp
+ * Request an explicit 6-digit email confirmation code for proof approval.
+ */
+export const requestProofApprovalOtp = async (req, res, next) => {
+  try {
+    const { proofId } = req.params;
+    const recipientEmail = req.user?.email || req.body?.email;
+
+    if (!recipientEmail) {
+      throw makeHttpError(400, 'User email is required for OTP dispatch.');
+    }
+
+    const result = await OtpService.generateAndSendOtp({
+      email: recipientEmail,
+      action: 'PROOF_APPROVAL',
+      referenceId: proofId,
+      fullName: req.user?.fullName || 'Customer',
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/proofs/:proofId/send-link
+ * Secure endpoint to send a customer proof review URL via email.
+ * Requires active login and explicit OTP verification.
+ */
+export const sendProofLink = async (req, res, next) => {
+  try {
+    const { proofId } = req.params;
+    const { recipientEmail, customerName, note, otp } = req.body;
+
+    const proof = await Proof.findOne({
+      $or: [
+        { proofId },
+        ...(/^[0-9a-fA-F]{24}$/.test(proofId) ? [{ _id: proofId }] : []),
+      ],
+    });
+
+    if (!proof) {
+      throw makeHttpError(404, `Proof not found with identifier "${proofId}".`);
+    }
+
+    const targetRecipient = recipientEmail || proof.metadata?.customerEmail;
+    if (!targetRecipient) {
+      throw makeHttpError(400, 'recipientEmail is required to dispatch the secure proof link.');
+    }
+
+    // Explicit OTP verification check
+    if (!otp) {
+      const otpSend = await OtpService.generateAndSendOtp({
+        email: req.user?.email || targetRecipient,
+        action: 'SEND_PROOF_LINK',
+        referenceId: proof.proofId,
+        fullName: req.user?.fullName || 'Merchant',
+      });
+
+      return res.status(403).json({
+        success: false,
+        requireOtp: true,
+        message: `OTP verification required before dispatching secure proof link. A 6-digit confirmation code has been sent to ${req.user?.email || targetRecipient}.`,
+        proofId: proof.proofId,
+        expiresInSeconds: otpSend.expiresInSeconds,
+      });
+    }
+
+    await OtpService.verifyOtp({
+      email: req.user?.email || targetRecipient,
+      action: 'SEND_PROOF_LINK',
+      referenceId: proof.proofId,
+      otp,
+    });
+
+    const secureUrl = buildSecureViewUrl(req, proof.secureToken);
+
+    // Sync timeline
+    await syncTimelineIfAvailable(
+      proof.shopifyOrderId || proof.orderId,
+      'PROOF_READY',
+      `Secure proof link sent to ${targetRecipient} by ${req.user?.email || 'staff'}.`,
+      { proofId: proof.proofId, secureUrl },
+    );
+
+    logSuccess(`[sendProofLink] Secure proof link dispatched for ${proof.proofId} to ${targetRecipient}`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Secure proof review link successfully dispatched to ${targetRecipient}.`,
+      data: {
+        proofId: proof.proofId,
+        recipientEmail: targetRecipient,
+        secureUrl,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

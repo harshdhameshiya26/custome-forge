@@ -21,10 +21,10 @@ const getRequestShop = (req) => {
     req.get('x-shopify-shop-domain') ||
     req.get('x-shop') ||
     req.query?.shop ||
-    (req.body && typeof req.body === 'object' && req.body.shop) ||
+    req.user?.shop ||
     process.env.SHOPIFY_SHOP ||
     process.env.SHOP ||
-    'custome-forge.myshopify.com';
+    '';
 
   return normalizeShopDomain(raw);
 };
@@ -253,7 +253,8 @@ export const handleSubscriptionUpdateWebhook = async (req, res, next) => {
       req.get('x-shopify-shop-domain') ||
       payload.shop_domain ||
       payload.shop ||
-      'custome-forge.myshopify.com';
+      process.env.SHOPIFY_SHOP ||
+      '';
 
     logSuccess(`🔔 [Billing Webhook] Received app/subscriptions/update for ${shop}`);
 

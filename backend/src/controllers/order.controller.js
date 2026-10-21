@@ -2,7 +2,8 @@
 
 import prisma from '../config/prisma.js';
 import CustomOrderTimeline, { ORDER_TIMELINE_STAGES } from '../models/custom-order-timeline.model.js';
-import { logError } from '../utils/logger.js';
+import CustomOrder from '../models/custom-order.model.js';
+import { logError, logSuccess, logWarn } from '../utils/logger.js';
 
 /**
  * Standard customer-friendly default messages for each production stage.
@@ -97,7 +98,8 @@ export const handleOrderCreatedWebhook = async (req, res) => {
       req.get('X-Shopify-Shop-Domain') ||
       payload.shop ||
       payload.domain ||
-      'myshopify.com';
+      process.env.SHOPIFY_SHOP ||
+      '';
 
     if (!rawOrderId) {
       return res.status(400).json({
@@ -379,8 +381,331 @@ export const updateOrderTimelineStage = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Shopify Webhook Handler: orders/fulfilled
+ *          Advances order timeline to "SHIPPED" (100% complete) and attaches fulfillment tracking info.
+ * @route   POST /api/webhooks/orders/fulfilled
+ * @access  Public (HMAC Verified)
+ */
+export const handleOrderFulfilledWebhook = async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const rawOrderId = payload.id || payload.order_id || payload.shopifyOrderId;
+
+    if (!rawOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing order ID in fulfillment webhook payload.',
+      });
+    }
+
+    const shopifyOrderId = normalizeOrderId(rawOrderId);
+    const { timeline, source } = await findTimelineByIdentifier(shopifyOrderId);
+
+    if (!timeline) {
+      logWarn(`⚠️ [orders/fulfilled] No timeline found for order ID "${shopifyOrderId}". Skipping.`);
+      return res.status(200).json({
+        success: true,
+        message: `No custom timeline found for order "${shopifyOrderId}". Ignored.`,
+      });
+    }
+
+    // Extract fulfillment & shipment tracking details
+    const fulfillments = payload.fulfillments || [];
+    const firstFulfillment = fulfillments[0] || {};
+    const trackingNumber =
+      firstFulfillment.tracking_number ||
+      (firstFulfillment.tracking_numbers && firstFulfillment.tracking_numbers[0]) ||
+      payload.tracking_number ||
+      null;
+    const trackingUrl =
+      firstFulfillment.tracking_url ||
+      (firstFulfillment.tracking_urls && firstFulfillment.tracking_urls[0]) ||
+      payload.tracking_url ||
+      null;
+    const trackingCompany =
+      firstFulfillment.tracking_company ||
+      payload.tracking_company ||
+      null;
+
+    const fulfillmentMeta = {
+      trackingNumber,
+      trackingUrl,
+      trackingCompany,
+      fulfilledAt: firstFulfillment.created_at || new Date().toISOString(),
+      fulfillmentId: firstFulfillment.id || null,
+      status: firstFulfillment.shipment_status || 'fulfilled',
+    };
+
+    const newHistoryEntry = {
+      stage: 'SHIPPED',
+      message: trackingNumber
+        ? `Manufacturing complete and shipped via ${trackingCompany || 'carrier'}! Tracking: ${trackingNumber}`
+        : DEFAULT_STAGE_MESSAGES.SHIPPED,
+      timestamp: new Date(),
+      metadata: fulfillmentMeta,
+    };
+
+    let updatedTimeline = null;
+
+    if (source === 'PRISMA' && prisma?.customOrderTimeline) {
+      try {
+        const existingHistory = Array.isArray(timeline.history) ? timeline.history : [];
+        const mergedMetadata = { ...(timeline.metadata || {}), fulfillment: fulfillmentMeta };
+
+        updatedTimeline = await prisma.customOrderTimeline.update({
+          where: { id: timeline.id },
+          data: {
+            currentStage: 'SHIPPED',
+            history: { set: [...existingHistory, newHistoryEntry] },
+            metadata: mergedMetadata,
+          },
+        });
+      } catch (err) {
+        logError(`⚠️ Prisma handleOrderFulfilledWebhook error: ${err.message}`);
+      }
+    }
+
+    if (!updatedTimeline) {
+      timeline.currentStage = 'SHIPPED';
+      timeline.history.push(newHistoryEntry);
+      timeline.metadata = { ...(timeline.metadata || {}), fulfillment: fulfillmentMeta };
+      updatedTimeline = await timeline.save();
+    }
+
+    // Also update CustomOrder status if exists
+    try {
+      if (prisma?.customOrder) {
+        await prisma.customOrder.updateMany({
+          where: { OR: [{ orderId: shopifyOrderId }, { shopifyOrderId }] },
+          data: { status: 'COMPLETED' },
+        });
+      }
+      await CustomOrder.updateMany(
+        { $or: [{ orderId: shopifyOrderId }, { shopifyOrderId }] },
+        { $set: { status: 'COMPLETED' } },
+      );
+    } catch (orderErr) {
+      logWarn(`⚠️ CustomOrder status update error on fulfillment: ${orderErr.message}`);
+    }
+
+    logSuccess(`🚚 [orders/fulfilled] Order "${shopifyOrderId}" timeline marked as SHIPPED.`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Order timeline advanced to SHIPPED upon Shopify fulfillment.',
+      timeline: updatedTimeline,
+    });
+  } catch (error) {
+    logError(`❌ orders/fulfilled webhook error: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal error processing order fulfilled webhook.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Shopify Webhook Handler: orders/cancelled
+ *          Updates custom order timeline when an order is cancelled in Shopify.
+ * @route   POST /api/webhooks/orders/cancelled
+ * @access  Public (HMAC Verified)
+ */
+export const handleOrderCancelledWebhook = async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const rawOrderId = payload.id || payload.order_id || payload.shopifyOrderId;
+
+    if (!rawOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing order ID in cancellation webhook payload.',
+      });
+    }
+
+    const shopifyOrderId = normalizeOrderId(rawOrderId);
+    const { timeline, source } = await findTimelineByIdentifier(shopifyOrderId);
+
+    if (!timeline) {
+      return res.status(200).json({
+        success: true,
+        message: `No custom timeline found for order "${shopifyOrderId}". Ignored.`,
+      });
+    }
+
+    const cancelReason = payload.cancel_reason || 'Merchant or Customer Cancelled';
+    const cancelledAt = payload.cancelled_at || new Date().toISOString();
+
+    const cancellationMeta = {
+      cancelReason,
+      cancelledAt,
+    };
+
+    const newHistoryEntry = {
+      stage: timeline.currentStage || 'DESIGN_RECEIVED',
+      message: `Order was cancelled in Shopify (Reason: ${cancelReason}). Production stopped.`,
+      timestamp: new Date(),
+      metadata: cancellationMeta,
+    };
+
+    let updatedTimeline = null;
+
+    if (source === 'PRISMA' && prisma?.customOrderTimeline) {
+      try {
+        const existingHistory = Array.isArray(timeline.history) ? timeline.history : [];
+        const mergedMetadata = { ...(timeline.metadata || {}), cancellation: cancellationMeta };
+
+        updatedTimeline = await prisma.customOrderTimeline.update({
+          where: { id: timeline.id },
+          data: {
+            history: { set: [...existingHistory, newHistoryEntry] },
+            metadata: mergedMetadata,
+          },
+        });
+      } catch (err) {
+        logError(`⚠️ Prisma handleOrderCancelledWebhook error: ${err.message}`);
+      }
+    }
+
+    if (!updatedTimeline) {
+      timeline.history.push(newHistoryEntry);
+      timeline.metadata = { ...(timeline.metadata || {}), cancellation: cancellationMeta };
+      updatedTimeline = await timeline.save();
+    }
+
+    // Also update CustomOrder status if exists
+    try {
+      if (prisma?.customOrder) {
+        await prisma.customOrder.updateMany({
+          where: { OR: [{ orderId: shopifyOrderId }, { shopifyOrderId }] },
+          data: { status: 'CANCELLED' },
+        });
+      }
+      await CustomOrder.updateMany(
+        { $or: [{ orderId: shopifyOrderId }, { shopifyOrderId }] },
+        { $set: { status: 'CANCELLED' } },
+      );
+    } catch (orderErr) {
+      logWarn(`⚠️ CustomOrder status update error on cancellation: ${orderErr.message}`);
+    }
+
+    logWarn(`🛑 [orders/cancelled] Order "${shopifyOrderId}" recorded as CANCELLED.`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Order cancellation recorded in timeline.',
+      timeline: updatedTimeline,
+    });
+  } catch (error) {
+    logError(`❌ orders/cancelled webhook error: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal error processing order cancelled webhook.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Shopify Webhook Handler: orders/updated
+ *          Updates custom order metadata when order changes in Shopify.
+ * @route   POST /api/webhooks/orders/updated
+ * @access  Public (HMAC Verified)
+ */
+export const handleOrderUpdatedWebhook = async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const rawOrderId = payload.id || payload.order_id || payload.shopifyOrderId;
+
+    if (!rawOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing order ID in order updated webhook payload.',
+      });
+    }
+
+    const shopifyOrderId = normalizeOrderId(rawOrderId);
+    const { timeline, source } = await findTimelineByIdentifier(shopifyOrderId);
+
+    if (!timeline) {
+      return res.status(200).json({
+        success: true,
+        message: `No custom timeline found for order "${shopifyOrderId}". Ignored.`,
+      });
+    }
+
+    const updatedMeta = {
+      ...(timeline.metadata || {}),
+      financialStatus: payload.financial_status || timeline.metadata?.financialStatus,
+      fulfillmentStatus: payload.fulfillment_status || timeline.metadata?.fulfillmentStatus,
+      customerNotes: payload.note !== undefined ? payload.note : timeline.metadata?.customerNotes,
+      updatedAt: new Date().toISOString(),
+    };
+
+    let updatedTimeline = null;
+    if (source === 'PRISMA' && prisma?.customOrderTimeline) {
+      try {
+        updatedTimeline = await prisma.customOrderTimeline.update({
+          where: { id: timeline.id },
+          data: { metadata: updatedMeta },
+        });
+      } catch (err) {
+        logError(`⚠️ Prisma handleOrderUpdatedWebhook error: ${err.message}`);
+      }
+    }
+
+    if (!updatedTimeline) {
+      timeline.metadata = updatedMeta;
+      updatedTimeline = await timeline.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Order timeline metadata synced from Shopify update.',
+      timeline: updatedTimeline,
+    });
+  } catch (error) {
+    logError(`❌ orders/updated webhook error: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal error processing order updated webhook.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Shopify Webhook Multiplexer: /api/webhooks/orders
+ *          Dispatches to create, fulfilled, cancelled, or updated handlers based on X-Shopify-Topic header.
+ * @route   POST /api/webhooks/orders
+ * @access  Public (HMAC Verified)
+ */
+export const handleOrdersMultiplexer = async (req, res, next) => {
+  const topic = (
+    req.get('X-Shopify-Topic') ||
+    req.get('x-shopify-topic') ||
+    ''
+  ).toLowerCase();
+
+  if (topic.includes('create')) {
+    return handleOrderCreatedWebhook(req, res, next);
+  }
+  if (topic.includes('fulfill')) {
+    return handleOrderFulfilledWebhook(req, res, next);
+  }
+  if (topic.includes('cancel')) {
+    return handleOrderCancelledWebhook(req, res, next);
+  }
+  return handleOrderUpdatedWebhook(req, res, next);
+};
+
 export default {
   handleOrderCreatedWebhook,
+  handleOrderFulfilledWebhook,
+  handleOrderCancelledWebhook,
+  handleOrderUpdatedWebhook,
+  handleOrdersMultiplexer,
   getOrderTimeline,
   updateOrderTimelineStage,
 };

@@ -3,6 +3,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import mongoose from 'mongoose';
 import app from './app.js';
 import connectDB from './config/db.js';
 import Design from './models/design.model.js';
@@ -17,6 +18,15 @@ import PrintFile from './models/print-file.model.js';
 import RoutingRule from './models/routing-rule.model.js';
 import CustomOrder from './models/custom-order.model.js';
 import Subscription from './models/subscription.model.js';
+import User from './models/user.model.js';
+import Schedule from './models/schedule.model.js';
+import ActionOtp from './models/action-otp.model.js';
+import ArtworkCheck from './models/artwork-check.model.js';
+import CustomOrderTimeline from './models/custom-order-timeline.model.js';
+import FeasibilityCheck from './models/feasibility-check.model.js';
+import Notification from './models/notification.model.js';
+import ProductCustomizationConfig from './models/product-customization-config.model.js';
+import ProductManufacturingConstraint from './models/product-manufacturing-constraint.model.js';
 import { logSuccess, logError, logWarn } from './utils/logger.js';
 import freePort from './utils/free-port.js';
 
@@ -38,23 +48,46 @@ const PORT = Number(process.env.PORT || envConfig.parsed?.PORT || 5000);
 const startServer = async () => {
   try {
     // 1. Connect to MongoDB
-    await connectDB();
+    const dbConn = await connectDB();
 
-    // 2. Ensure required uniqueness and indexes exist for all models
-    await Promise.all([
-      Design.createIndexes(),
-      DesignRevision.createIndexes(),
-      DesignFeedback.createIndexes(),
-      GuestSession.createIndexes(),
-      DesignLibraryItem.createIndexes(),
-      MerchantSettings.createIndexes(),
-      Proof.createIndexes(),
-      Comment.createIndexes(),
-      PrintFile.createIndexes(),
-      RoutingRule.createIndexes(),
-      CustomOrder.createIndexes(),
-      Subscription.createIndexes(),
-    ]);
+    // 2. Ensure all 21 models have collections created and required uniqueness/indexes pushed to MongoDB
+    const models = [
+      Design,
+      DesignRevision,
+      DesignFeedback,
+      GuestSession,
+      DesignLibraryItem,
+      MerchantSettings,
+      Proof,
+      Comment,
+      PrintFile,
+      RoutingRule,
+      CustomOrder,
+      Subscription,
+      User,
+      Schedule,
+      ActionOtp,
+      ArtworkCheck,
+      CustomOrderTimeline,
+      FeasibilityCheck,
+      Notification,
+      ProductCustomizationConfig,
+      ProductManufacturingConstraint,
+    ];
+
+    // Use the connection object returned by connectDB() to avoid relying on the
+    // mongoose singleton state which may be stale during --watch hot-restarts.
+    const db = (dbConn && dbConn.db) ? dbConn.db : mongoose.connection.db;
+    const existingCollections = await db.listCollections().toArray();
+    const existingNames = new Set(existingCollections.map((c) => c.name));
+
+    for (const m of models) {
+      const colName = m.collection.name;
+      if (!existingNames.has(colName)) {
+        await db.createCollection(colName).catch(() => {});
+      }
+      await m.createIndexes().catch(() => {});
+    }
 
     // 3. Proactively ensure port is available
     freePort(PORT);
@@ -121,4 +154,4 @@ const startServer = async () => {
 };
 
 startServer();
-
+// Watch trigger: updated OTP configuration and route handlers

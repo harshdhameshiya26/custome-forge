@@ -7,6 +7,7 @@ import {
   getPrintFilesByOrderId,
   getPrintFileById,
 } from '../controllers/print.controller.js';
+import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = express.Router();
 
@@ -34,16 +35,16 @@ const router = express.Router();
  *    Retrieves details and status of a specific print file by fileId.
  */
 
-// Generate print-ready production asset
-router.post('/generate/:orderId', generatePrintFile);
+// Generate print-ready production asset (requires verified user session)
+router.post('/generate/:orderId', authenticateUser, requireVerifiedUser, generatePrintFile);
 
-// Secure production file download endpoint
+// Secure production file download endpoint (token-gated, no session required)
 router.get('/download/:fileId', downloadPrintFile);
 
-// Retrieve all generated production files for an order
-router.get('/order/:orderId', getPrintFilesByOrderId);
+// Retrieve all generated production files for an order (requires auth)
+router.get('/order/:orderId', authenticateUser, requireVerifiedUser, getPrintFilesByOrderId);
 
-// Retrieve specific print file metadata by fileId
-router.get('/file/:fileId', getPrintFileById);
+// Retrieve specific print file metadata by fileId (requires auth)
+router.get('/file/:fileId', authenticateUser, requireVerifiedUser, getPrintFileById);
 
 export default router;

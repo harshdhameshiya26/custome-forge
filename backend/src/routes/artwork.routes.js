@@ -7,6 +7,7 @@ import {
   getProductPrintSpecs,
   upsertProductPrintSpecs,
 } from '../controllers/artwork.controller.js';
+import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = Router();
 
@@ -42,8 +43,8 @@ router.get('/specs/:productId', getProductPrintSpecs);
 /**
  * @route   POST /api/artwork/specs
  * @desc    Configure/upsert print-area requirements for a product
- * @access  Merchant / Admin
+ * @access  Merchant (requires verified user session)
  */
-router.post('/specs', upsertProductPrintSpecs);
+router.post('/specs', authenticateUser, requireVerifiedUser, upsertProductPrintSpecs);
 
 export default router;

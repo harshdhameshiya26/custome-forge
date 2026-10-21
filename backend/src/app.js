@@ -14,6 +14,9 @@ import ruleRoutes from './routes/rule.routes.js';
 import billingRoutes from './routes/billing.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import userRoutes from './routes/user.routes.js';
+import scheduleRoutes from './routes/schedule.routes.js';
+import supplierRoutes from './routes/supplier.routes.js';
 import { createNotification } from './services/notificationService.js';
 import { logError } from './utils/logger.js';
 
@@ -69,6 +72,10 @@ app.get('/api/health', (req, res) => {
 // -----------------------------------------------------------------------------
 // 4. API Routes Mounting
 // -----------------------------------------------------------------------------
+
+// Feature: User Authentication, Verification & Profile Management
+app.use('/api/users', userRoutes);
+
 app.use('/api/designs', designRoutes);
 
 // Feature 9 — Reusable Customer Design Library
@@ -104,6 +111,10 @@ app.use('/api/webhooks', webhookRoutes);
 // Feature: Centralized Application Notification System (Top-Right Slide-In Panel)
 app.use('/api/notifications', notificationRoutes);
 
+// Feature: Supplier Registration & Design Scheduling System
+app.use('/api/schedules', scheduleRoutes);
+app.use('/api/suppliers', supplierRoutes);
+
 // -----------------------------------------------------------------------------
 // 5. 404 Route Not Found Handler
 // -----------------------------------------------------------------------------
@@ -130,7 +141,7 @@ app.use((err, req, res, next) => {
   const errorShop =
     req.shop ||
     req.shopDomain ||
-    req.shopifyProxy?.shop ||
+    req.user?.shop ||
     req.get('x-shopify-shop-domain') ||
     req.get('x-shop') ||
     req.query?.shop ||

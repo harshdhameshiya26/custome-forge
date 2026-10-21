@@ -7,6 +7,7 @@ import {
   cancelSubscription,
   getBillingStatus,
 } from '../controllers/billing.controller.js';
+import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = express.Router();
 
@@ -30,6 +31,9 @@ const router = express.Router();
  * 4. GET /api/billing/status
  *    Inspects current merchant subscription plan, expiration, and active status.
  */
+
+// All billing routes require a verified user session linked to the shop
+router.use(authenticateUser, requireVerifiedUser);
 
 router.post('/create', createSubscription);
 router.get('/callback', handleBillingCallback);

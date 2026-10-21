@@ -8,7 +8,7 @@ import {
   deleteNotification,
   clearAllNotifications,
 } from '../controllers/notification.controller.js';
-import { extractShopContext } from '../middleware/shopify-proxy-auth.js';
+import { extractShopContext } from '../middleware/shopper-auth.js';
 
 const router = express.Router();
 

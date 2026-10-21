@@ -19,16 +19,33 @@ import {
   requireShopper,
   revokeGuestSession,
   extractShopContext,
-} from '../middleware/shopify-proxy-auth.js';
+} from '../middleware/shopper-auth.js';
 import {
   feedbackRateLimit,
   guestSessionRateLimit,
 } from '../middleware/feedback-rate-limit.js';
 
+import {
+  authenticateToken,
+  requireVerifiedUser,
+  verifyRole,
+} from '../middleware/auth.middleware.js';
+import {
+  createTemplate,
+  listTemplates,
+  getTemplateById,
+  resumeDesign,
+  generateShareToken,
+  reviewAndModifyDesign,
+} from '../controllers/design.controller.js';
+
 const router = express.Router();
 
 router.use(extractShopContext);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Public / Shareable Feedback & Guest Sessions
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/sessions', guestSessionRateLimit, createGuestSession);
 router.post('/sessions/claim', requireShopper, requireGuestClaim, claimGuestDesigns);
 router.delete('/sessions/current', requireShopper, revokeGuestSession);
@@ -37,6 +54,43 @@ router.get('/share/:shareToken/feedback', listSharedFeedback);
 router.post('/share/:shareToken/feedback', feedbackRateLimit, submitSharedFeedback);
 router.get('/share/:shareToken', getSharedDesign);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Design & Resume Endpoints (Cross-Session Persistence)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/resume', resumeDesign);
+router.get('/resume/:id', resumeDesign);
+router.post('/:id/share-token', generateShareToken);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Designer & Merchant Workflow Endpoints (Templates & Canvas Review)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/templates', listTemplates);
+router.get('/templates/:id', getTemplateById);
+router.post(
+  '/templates',
+  authenticateToken,
+  requireVerifiedUser,
+  verifyRole(['designer', 'merchant']),
+  createTemplate,
+);
+router.patch(
+  '/:id/review',
+  authenticateToken,
+  requireVerifiedUser,
+  verifyRole(['designer', 'merchant']),
+  reviewAndModifyDesign,
+);
+router.put(
+  '/:id/review',
+  authenticateToken,
+  requireVerifiedUser,
+  verifyRole(['designer', 'merchant']),
+  reviewAndModifyDesign,
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shopper Scoped Endpoints
+// ─────────────────────────────────────────────────────────────────────────────
 router.use(requireShopper);
 
 router.get('/', listMyDesigns);

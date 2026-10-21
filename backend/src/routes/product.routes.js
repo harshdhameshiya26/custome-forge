@@ -6,6 +6,7 @@ import {
   getProductConstraints,
   upsertProductConstraints,
 } from '../controllers/feasibility.controller.js';
+import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = Router();
 
@@ -40,8 +41,8 @@ router.get('/:productId/constraints', getProductConstraints);
 /**
  * @route   POST /api/products/constraints
  * @desc    Create or update manufacturing constraints for a product
- * @access  Merchant / Admin
+ * @access  Merchant (requires verified user session)
  */
-router.post('/constraints', upsertProductConstraints);
+router.post('/constraints', authenticateUser, requireVerifiedUser, upsertProductConstraints);
 
 export default router;
