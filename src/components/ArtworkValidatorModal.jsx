@@ -29,7 +29,8 @@ import {
 export default function ArtworkValidatorModal({
   open = false,
   onClose = () => {},
-  onConfirm = () => {},
+  onConfirm,
+  onAccept,
   artworkData = null,
 }) {
   const [isFixing, setIsFixing] = useState(false);
@@ -63,6 +64,17 @@ export default function ArtworkValidatorModal({
     }, 1200);
   }, []);
 
+  const handlePrimaryAction = useCallback(() => {
+    const data = { ...inspection, dpi: currentDpi, fixed: fixedState };
+    if (typeof onAccept === 'function') {
+      onAccept(data);
+    } else if (typeof onConfirm === 'function') {
+      onConfirm(data);
+    } else {
+      onClose();
+    }
+  }, [inspection, currentDpi, fixedState, onAccept, onConfirm, onClose]);
+
   return (
     <Modal
       open={open}
@@ -70,7 +82,7 @@ export default function ArtworkValidatorModal({
       title="Artwork Quality & Print Feasibility Inspector"
       primaryAction={{
         content: isOptimal ? 'Accept & Proceed to Proof' : 'Proceed with Current Artwork',
-        onAction: () => onConfirm({ ...inspection, dpi: currentDpi, fixed: fixedState }),
+        onAction: handlePrimaryAction,
         tone: isDpiCritical && !fixedState ? 'critical' : undefined,
       }}
       secondaryActions={[

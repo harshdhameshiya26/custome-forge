@@ -10,6 +10,10 @@ export const SENSITIVE_ACTIONS = Object.freeze([
   'SEND_PROOF_LINK',
   'CONFIRM_SCHEDULE',
   'CRITICAL_ACTION',
+  'TRIGGER_HANDOFF',
+  'REVISION_APPROVAL',
+  'FEEDBACK_APPROVAL',
+  'LIBRARY_MANAGE',
 ]);
 
 const actionOtpSchema = new mongoose.Schema(

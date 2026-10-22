@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Page,
@@ -9,305 +9,295 @@ import {
   Text,
   Badge,
   Button,
-  ButtonGroup,
-  TextField,
-  Select,
-  Banner,
-  Divider,
+  DataTable,
   Box,
+  Divider,
+  ProgressBar,
+  SkeletonBodyText,
+  Banner,
 } from '@shopify/polaris';
+import api from '../services/api.js';
 
 /**
- * Dashboard (Home & Product Catalog Entry Page)
- * 
- * Provides store merchants and customers with the initial product launchpad:
- * - Filterable catalog of customizable blank items
- * - Technique compatibility tags (Embroidery, Laser, UV Print, Screen Print, Foil)
- * - Customization zones (Chest, Sleeve, 360 Wrap, Deboss Zone)
- * - One-click launch into the Customizer Editor
- * - Direct links to Proof Approvals, Order Tracking, and Merchant Hub
- * 
- * Strictly built with @shopify/polaris layout and components (zero custom CSS).
+ * Dashboard — Merchant Operations Overview
+ * Fetches real metrics from /api/analytics/dashboard.
+ * Starts with 0 / empty state when the DB has no data yet.
  */
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const basePath = location?.pathname?.startsWith('/app') ? '/app' : '';
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Customizable Products Data
-  const products = useMemo(() => [
-    {
-      id: 'prod_hoodie_01',
-      title: 'Heavyweight French Terry Hoodie (450 GSM)',
-      category: 'apparel',
-      basePrice: '$48.00',
-      inventory: 340,
-      techniques: ['Embroidery', 'Direct-to-Garment', 'Screen Print'],
-      zones: ['Front Chest (250x300mm)', 'Left Wrist (80x80mm)', 'Upper Back'],
-      leadTime: '3-5 Business Days',
-      minDpi: 300,
-      featured: true,
-    },
-    {
-      id: 'prod_tumbler_02',
-      title: 'Insulated Hydro Stainless Tumbler (32 oz)',
-      category: 'drinkware',
-      basePrice: '$24.50',
-      inventory: 520,
-      techniques: ['360 Laser Rotary Engraving', 'Full Color UV Print'],
-      zones: ['Full 360 Wrap', 'Front Centered Badge'],
-      leadTime: '2-4 Business Days',
-      minDpi: 300,
-      featured: true,
-    },
-    {
-      id: 'prod_folio_03',
-      title: 'Full Grain Vegetable-Tanned Leather Folio',
-      category: 'leather',
-      basePrice: '$65.00',
-      inventory: 110,
-      techniques: ['Heat Foil Debossing', 'Blind Stamp', 'Laser Monogram'],
-      zones: ['Lower Right Monogram (50x30mm)', 'Center Cover'],
-      leadTime: '4-7 Business Days',
-      minDpi: 350,
-      featured: false,
-    },
-    {
-      id: 'prod_tee_04',
-      title: 'Vintage Pigment-Dyed Cotton Tee (220 GSM)',
-      category: 'apparel',
-      basePrice: '$18.00',
-      inventory: 980,
-      techniques: ['Water-based Screen Print', 'DTG Photorealism'],
-      zones: ['Full Front Chest', 'Pocket Print', 'Back Poster'],
-      leadTime: '2-3 Business Days',
-      minDpi: 300,
-      featured: false,
-    },
-    {
-      id: 'prod_pen_05',
-      title: 'Aviation-Grade Titanium EDC Bolt-Action Pen',
-      category: 'metal',
-      basePrice: '$32.00',
-      inventory: 230,
-      techniques: ['Fiber Laser Deep Etch', 'Micro-Annealing'],
-      zones: ['Barrel Inscription (40x5mm)', 'Pocket Clip'],
-      leadTime: '1-3 Business Days',
-      minDpi: 400,
-      featured: false,
-    },
-    {
-      id: 'prod_journal_06',
-      title: 'Handmade Cotton Rag Paper Hardbound Journal',
-      category: 'paper',
-      basePrice: '$21.00',
-      inventory: 415,
-      techniques: ['Letterpress Foil Stamp', 'Silk Screen'],
-      zones: ['Front Hardcover Cover', 'Spine Text'],
-      leadTime: '3-4 Business Days',
-      minDpi: 300,
-      featured: false,
-    },
-  ], []);
+  const EMPTY_METRICS = {
+    totalOrders: 0,
+    pendingApproval: 0,
+    inProduction: 0,
+    completed: 0,
+  };
 
-  // Filter products by category and query
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
-      const matchesQuery =
-        !searchQuery.trim() ||
-        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.techniques.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesQuery;
-    });
-  }, [products, selectedCategory, searchQuery]);
+  const [metrics, setMetrics] = useState(EMPTY_METRICS);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    api.analytics
+      .dashboard()
+      .then((json) => {
+        if (cancelled) return;
+        if (json?.data?.summary) {
+          setMetrics({
+            totalOrders: json.data.summary.totalOrders ?? 0,
+            pendingApproval: json.data.summary.pendingApproval ?? 0,
+            inProduction: json.data.summary.inProduction ?? 0,
+            completed: json.data.summary.completed ?? 0,
+          });
+        }
+        if (Array.isArray(json?.data?.recentOrders)) {
+          setRecentOrders(json.data.recentOrders);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('Dashboard fetch notice:', err.message);
+          setMetrics(EMPTY_METRICS);
+          setRecentOrders([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+
+  const recentOrderRows = recentOrders.map((ord, i) => [
+    <Button
+      key={`${ord.orderNumber}-${i}-link`}
+      variant="plain"
+      onClick={() => navigate(`${basePath}/orders`)}
+    >
+      <Text fontWeight="bold" as="span">{ord.orderNumber}</Text>
+    </Button>,
+    ord.customerName,
+    ord.productTitle,
+    <Badge key={`${ord.orderNumber}-${i}-badge`} tone={ord.statusTone}>{ord.status}</Badge>,
+    <Text key={`${ord.orderNumber}-${i}-date`} tone="subdued" as="span">{ord.date}</Text>,
+  ]);
+
+  const totalForPercent = metrics.totalOrders || 1;
 
   return (
     <Page
-      title="CustomForge — Product Customization Hub"
-      subtitle="Select a blank canvas product or manage live factory workflows"
+      title="Merchant Dashboard"
+      subtitle="Here's what's happening with your custom products."
       primaryAction={{
-        content: 'Open Customizer Studio',
+        content: '+ Create New Design',
         onAction: () => navigate(`${basePath}/editor`),
       }}
-      secondaryActions={[
-        {
-          content: 'Merchant Operations',
-          onAction: () => navigate(`${basePath}/merchant`),
-        },
-        {
-          content: 'Pending Proofs (19)',
-          onAction: () => navigate(`${basePath}/proofs`),
-        },
-      ]}
     >
       <BlockStack gap="500">
-        {/* Welcome & System Status Banner */}
-        <Banner
-          title="CustomForge Multi-Technique Production Engine Active"
-          tone="info"
-        >
-          <Text as="p" variant="bodyMd">
-            Connect custom graphics, enforce DPI &amp; factory feasibility limits in real-time, authenticate proofs via merchant OTP, and bundle schedules directly to certified suppliers.
-          </Text>
-        </Banner>
+        {/* Error Banner */}
+        {error && (
+          <Banner tone="critical" title="Failed to load dashboard" onDismiss={() => setError(null)}>
+            <Text as="p" variant="bodyMd">{error}</Text>
+          </Banner>
+        )}
 
-        {/* Quick Launchpad Navigation Card */}
-        <Card>
-          <BlockStack gap="300">
-            <InlineStack align="space-between" alignBlock="center">
-              <Text variant="headingSm" as="h4">
-                Core Feature Workflows
-              </Text>
-              <Badge tone="success">Engine Online (REST API)</Badge>
-            </InlineStack>
+        {/* 4 Metric Cards */}
+        <Layout>
+          {/* 1. Total Orders */}
+          <Layout.Section variant="oneFourth">
+            <Card>
+              <BlockStack gap="200">
+                <InlineStack align="space-between" alignBlock="center">
+                  <Text tone="subdued" variant="bodySm" as="span">Total Orders</Text>
+                  <Badge tone="info" size="small">Orders</Badge>
+                </InlineStack>
+                {loading ? (
+                  <SkeletonBodyText lines={1} />
+                ) : (
+                  <Text variant="heading2xl" as="p" fontWeight="bold">
+                    {metrics.totalOrders}
+                  </Text>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
 
-            <Divider />
+          {/* 2. Pending Approval */}
+          <Layout.Section variant="oneFourth">
+            <Card>
+              <BlockStack gap="200">
+                <InlineStack align="space-between" alignBlock="center">
+                  <Text tone="subdued" variant="bodySm" as="span">Pending Approval</Text>
+                  <Badge tone="attention" size="small">Action Req</Badge>
+                </InlineStack>
+                {loading ? (
+                  <SkeletonBodyText lines={1} />
+                ) : (
+                  <Text variant="heading2xl" as="p" fontWeight="bold">
+                    {metrics.pendingApproval}
+                  </Text>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
 
-            <InlineStack gap="300" wrap>
-              <Button onClick={() => navigate(`${basePath}/editor`)} variant="primary">
-                1. Customizer Studio
-              </Button>
-              <Button onClick={() => navigate(`${basePath}/proofs`)}>
-                2. Proof Approvals &amp; History
-              </Button>
-              <Button onClick={() => navigate(`${basePath}/orders`)}>
-                3. Order Status Timeline
-              </Button>
-              <Button onClick={() => navigate(`${basePath}/my-designs`)}>
-                4. Reusable Design Library
-              </Button>
-              <Button onClick={() => navigate(`${basePath}/merchant`)}>
-                5. Merchant Operations Hub
-              </Button>
-              <Button onClick={() => navigate(`${basePath}/billing`)}>
-                6. Subscription &amp; Billing
-              </Button>
-            </InlineStack>
-          </BlockStack>
-        </Card>
+          {/* 3. In Production */}
+          <Layout.Section variant="oneFourth">
+            <Card>
+              <BlockStack gap="200">
+                <InlineStack align="space-between" alignBlock="center">
+                  <Text tone="subdued" variant="bodySm" as="span">In Production</Text>
+                  <Badge tone="magic" size="small">Live Floor</Badge>
+                </InlineStack>
+                {loading ? (
+                  <SkeletonBodyText lines={1} />
+                ) : (
+                  <Text variant="heading2xl" as="p" fontWeight="bold">
+                    {metrics.inProduction}
+                  </Text>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
 
-        {/* Search & Category Filter Controls */}
-        <Card>
-          <InlineStack align="space-between" alignBlock="center">
-            <Box width="60%">
-              <TextField
-                label="Search Customizable Blanks"
-                labelHidden
-                placeholder="Search products by title, technique (e.g. Embroidery, Laser), or zone..."
-                value={searchQuery}
-                onChange={setSearchQuery}
-                clearButton
-                onClearButtonClick={() => setSearchQuery('')}
-                autoComplete="off"
-              />
-            </Box>
+          {/* 4. Completed */}
+          <Layout.Section variant="oneFourth">
+            <Card>
+              <BlockStack gap="200">
+                <InlineStack align="space-between" alignBlock="center">
+                  <Text tone="subdued" variant="bodySm" as="span">Completed</Text>
+                  <Badge tone="success" size="small">Fulfilled</Badge>
+                </InlineStack>
+                {loading ? (
+                  <SkeletonBodyText lines={1} />
+                ) : (
+                  <Text variant="heading2xl" as="p" fontWeight="bold">
+                    {metrics.completed}
+                  </Text>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
 
-            <Box width="35%">
-              <Select
-                label="Filter by Category"
-                labelHidden
-                options={[
-                  { label: 'All Product Categories', value: 'ALL' },
-                  { label: 'Apparel & Streetwear', value: 'apparel' },
-                  { label: 'Drinkware & Tumblers', value: 'drinkware' },
-                  { label: 'Leather Goods', value: 'leather' },
-                  { label: 'Precision Metals', value: 'metal' },
-                  { label: 'Fine Stationery & Paper', value: 'paper' },
-                ]}
-                value={selectedCategory}
-                onChange={setSelectedCategory}
-              />
-            </Box>
-          </InlineStack>
-        </Card>
+        {/* Recent Orders + Design Stats */}
+        <Layout>
+          {/* Recent Orders */}
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" alignBlock="center">
+                  <Text variant="headingMd" as="h2">Recent Orders</Text>
+                  <Button variant="plain" onClick={() => navigate(`${basePath}/orders`)}>
+                    View all
+                  </Button>
+                </InlineStack>
 
-        {/* Products Grid */}
-        <BlockStack gap="400">
-          <InlineStack align="space-between">
-            <Text variant="headingMd" as="h3">
-              Customizable Catalog ({filteredProducts.length} Items Available)
-            </Text>
-            <Text variant="bodySm" tone="subdued">
-              Showing active supplier-verified blank goods
-            </Text>
-          </InlineStack>
+                {loading ? (
+                  <SkeletonBodyText lines={4} />
+                ) : recentOrders.length === 0 ? (
+                  <Box padding="400">
+                    <Text tone="subdued" alignment="center" as="p" variant="bodyMd">
+                      No orders yet. Orders will appear here once customers place custom product orders.
+                    </Text>
+                  </Box>
+                ) : (
+                  <DataTable
+                    columnContentTypes={['text', 'text', 'text', 'text', 'text']}
+                    headings={['# Order', 'Customer', 'Product', 'Status', 'Date']}
+                    rows={recentOrderRows}
+                  />
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
 
-          <Layout>
-            {filteredProducts.map((prod) => (
-              <Layout.Section key={prod.id} variant="oneThird">
-                <Card>
-                  <BlockStack gap="300">
-                    {/* Header with Title and Featured Badge */}
-                    <InlineStack align="space-between" alignBlock="start">
-                      <Box width="80%">
-                        <Text variant="headingSm" as="h4">
-                          {prod.title}
+          {/* Design Statistics */}
+          <Layout.Section variant="oneThird">
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">Design Statistics</Text>
+
+                <Card background="bg-surface-secondary">
+                  <Box padding="400">
+                    <BlockStack gap="200" align="center">
+                      <Text tone="subdued" variant="bodySm" as="span" alignment="center">
+                        Total Orders
+                      </Text>
+                      {loading ? (
+                        <SkeletonBodyText lines={1} />
+                      ) : (
+                        <Text variant="heading3xl" as="p" alignment="center" fontWeight="bold">
+                          {metrics.totalOrders}
                         </Text>
-                      </Box>
-                      {prod.featured && <Badge tone="magic">Popular</Badge>}
-                    </InlineStack>
-
-                    {/* Price & Lead Time Meta */}
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" fontWeight="bold">
-                        {prod.basePrice} <Text as="span" variant="bodySm" tone="subdued">base</Text>
-                      </Text>
-                      <Text variant="bodySm" tone="subdued">
-                        Lead: {prod.leadTime}
-                      </Text>
-                    </InlineStack>
-
-                    <Divider />
-
-                    {/* Technique Compatibility Tags */}
-                    <BlockStack gap="100">
-                      <Text variant="bodySm" fontWeight="semibold">
-                        Manufacturing Techniques:
-                      </Text>
-                      <InlineStack gap="100" wrap>
-                        {prod.techniques.map((t, idx) => (
-                          <Badge key={idx} tone="info" size="small">
-                            {t}
-                          </Badge>
-                        ))}
-                      </InlineStack>
+                      )}
                     </BlockStack>
-
-                    {/* Customization Zones */}
-                    <BlockStack gap="100">
-                      <Text variant="bodySm" fontWeight="semibold">
-                        Customization Print Zones:
-                      </Text>
-                      <Text variant="bodySm" tone="subdued">
-                        {prod.zones.join(' • ')}
-                      </Text>
-                    </BlockStack>
-
-                    <Divider />
-
-                    {/* Action Button Group */}
-                    <InlineStack align="space-between" alignBlock="center">
-                      <Text variant="bodySm" tone="subdued">
-                        Min: {prod.minDpi} DPI
-                      </Text>
-                      <ButtonGroup>
-                        <Button
-                          variant="primary"
-                          onClick={() => navigate(`${basePath}/editor?productId=${prod.id}`)}
-                        >
-                          Customize
-                        </Button>
-                      </ButtonGroup>
-                    </InlineStack>
-                  </BlockStack>
+                  </Box>
                 </Card>
-              </Layout.Section>
-            ))}
-          </Layout>
-        </BlockStack>
+
+                <Divider />
+
+                <BlockStack gap="300">
+                  {/* Pending Approval */}
+                  <BlockStack gap="100">
+                    <InlineStack align="space-between">
+                      <InlineStack gap="150" alignBlock="center">
+                        <Box background="bg-fill-caution" minWidth="10px" minHeight="10px" borderRadius="full" />
+                        <Text variant="bodySm" as="span">Pending Approval</Text>
+                      </InlineStack>
+                      <Text variant="bodySm" fontWeight="bold" as="span">{metrics.pendingApproval}</Text>
+                    </InlineStack>
+                    <ProgressBar
+                      progress={Math.round((metrics.pendingApproval / totalForPercent) * 100)}
+                      tone="caution"
+                      size="small"
+                    />
+                  </BlockStack>
+
+                  {/* In Production */}
+                  <BlockStack gap="100">
+                    <InlineStack align="space-between">
+                      <InlineStack gap="150" alignBlock="center">
+                        <Box background="bg-fill-magic" minWidth="10px" minHeight="10px" borderRadius="full" />
+                        <Text variant="bodySm" as="span">In Production</Text>
+                      </InlineStack>
+                      <Text variant="bodySm" fontWeight="bold" as="span">{metrics.inProduction}</Text>
+                    </InlineStack>
+                    <ProgressBar
+                      progress={Math.round((metrics.inProduction / totalForPercent) * 100)}
+                      tone="info"
+                      size="small"
+                    />
+                  </BlockStack>
+
+                  {/* Completed */}
+                  <BlockStack gap="100">
+                    <InlineStack align="space-between">
+                      <InlineStack gap="150" alignBlock="center">
+                        <Box background="bg-fill-success" minWidth="10px" minHeight="10px" borderRadius="full" />
+                        <Text variant="bodySm" as="span">Completed</Text>
+                      </InlineStack>
+                      <Text variant="bodySm" fontWeight="bold" as="span">{metrics.completed}</Text>
+                    </InlineStack>
+                    <ProgressBar
+                      progress={Math.round((metrics.completed / totalForPercent) * 100)}
+                      tone="success"
+                      size="small"
+                    />
+                  </BlockStack>
+                </BlockStack>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
       </BlockStack>
     </Page>
   );

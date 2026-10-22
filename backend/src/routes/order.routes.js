@@ -4,11 +4,20 @@ import { Router } from 'express';
 import {
   getOrderTimeline,
   updateOrderTimelineStage,
+  listOrders,
 } from '../controllers/order.controller.js';
 import { triggerOrderHandoff } from '../controllers/handoff.controller.js';
 import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 
 const router = Router();
+
+/**
+ * @route   GET /api/orders
+ * @desc    Fetch recent custom orders
+ * @access  Public / Merchant
+ */
+router.get('/', listOrders);
+
 
 /**
  * @route   GET /api/orders/timeline/:orderId

@@ -10,6 +10,7 @@ import {
   DataTable,
   Button,
 } from '@shopify/polaris';
+import DesignMockupPreview from './DesignMockupPreview';
 
 /**
  * PrintPreviewModal
@@ -56,19 +57,21 @@ export default function PrintPreviewModal({
     >
       <Modal.Section>
         <BlockStack gap="400">
-          <Card background="bg-surface-secondary">
-            <Box padding="600">
-              <BlockStack gap="200" align="center">
-                <Text variant="headingLg" as="p" tone="magic">
-                  [ CALIBRATED PRE-PRESS TECHNICAL SHEET ]
-                </Text>
-                <Text variant="bodyMd" fontWeight="semibold">
-                  {data.productName} — {data.technique}
-                </Text>
-                <Badge tone="success">{data.resolutionStatus}</Badge>
-              </BlockStack>
-            </Box>
-          </Card>
+          {/* Realistic product+design mockup at top of proof sheet */}
+          <DesignMockupPreview
+            productId={data.productId || 'tshirt'}
+            productColor={data.productColor || '#ffffff'}
+            customText={data.customText || data.designText || "Good Vibes"}
+            designText={data.customText || data.designText || "Good Vibes"}
+            productLabel={data.productName}
+            size="md"
+          />
+          <BlockStack gap="100" align="center">
+            <Text variant="bodyMd" fontWeight="semibold" alignment="center">
+              {data.productName} — {data.technique}
+            </Text>
+            <Badge tone="success">{data.resolutionStatus}</Badge>
+          </BlockStack>
 
           <Card>
             <BlockStack gap="300">

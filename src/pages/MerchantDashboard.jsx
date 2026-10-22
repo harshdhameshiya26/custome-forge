@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Page,
   Layout,
@@ -8,7 +8,6 @@ import {
   Text,
   Badge,
   Button,
-  ButtonGroup,
   DataTable,
   Banner,
   Modal,
@@ -18,20 +17,15 @@ import {
   Box,
   ProgressBar,
   Tabs,
+  Spinner,
 } from '@shopify/polaris';
 import SupplierScheduleInterface from '../components/SupplierScheduleInterface';
+import api from '../services/api';
 
 /**
  * MerchantDashboard
- * 
- * Central operations center for store merchants managing customized products:
- * - Real-time metrics cards: Active Custom Orders, Pending Proof Approvals, Supplier Schedule Batches, Design Submissions
- * - Production Handoff Rules configuration modal
- * - Supplier Capacity Queue modal
- * - Interactive batch schedule creator (25 to 100 design rule enforcement with 2FA OTP)
- * - Orders & Designs DataTable with filtering and status badges
- * 
- * Strictly uses @shopify/polaris components and layout props (zero custom CSS).
+ * Real operations center fetching live metrics and custom orders from backend APIs.
+ * Starts with 0 metrics and empty lists when no orders exist.
  */
 export default function MerchantDashboard() {
   const [activeTab, setActiveTab] = useState(0);
@@ -42,133 +36,94 @@ export default function MerchantDashboard() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [toastMessage, setToastMessage] = useState(null);
 
+  // Live state
+  const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+
   // Handoff Rules Form State
   const [minBatchSize, setMinBatchSize] = useState('25');
   const [maxBatchSize, setMaxBatchSize] = useState('100');
   const [minDpiThreshold, setMinDpiThreshold] = useState('300');
   const [autoRouteEnabled, setAutoRouteEnabled] = useState('enabled');
 
-  // Dashboard Overview Metrics
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [analyticsRes, ordersRes, suppliersRes] = await Promise.allSettled([
+        api.analytics.dashboard(),
+        api.orders.list(),
+        api.suppliers.list(),
+      ]);
+
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value?.data) {
+        setAnalytics(analyticsRes.value.data);
+      } else {
+        setAnalytics(null);
+      }
+
+      if (ordersRes.status === 'fulfilled') {
+        const val = ordersRes.value?.data;
+        setOrders(Array.isArray(val) ? val : (Array.isArray(val?.items) ? val.items : []));
+      } else {
+        setOrders([]);
+      }
+
+      if (suppliersRes.status === 'fulfilled') {
+        const val = suppliersRes.value?.data;
+        setSuppliers(Array.isArray(val) ? val : (Array.isArray(val?.items) ? val.items : []));
+      } else {
+        setSuppliers([]);
+      }
+
+    } catch (err) {
+      console.warn('Dashboard data fetch error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Dynamic Dashboard Overview Metrics (Real data starting from 0)
+  const counts = analytics?.counts || {};
   const metrics = [
     {
       title: 'Active Custom Orders',
-      value: '142',
-      trend: '+18% vs last week',
-      tone: 'success',
-      badgeText: 'Live Pipeline',
+      value: String(counts.totalOrders ?? orders.length ?? 0),
+      trend: orders.length === 0 ? 'No orders placed yet' : 'Live orders in pipeline',
+      tone: orders.length > 0 ? 'success' : 'subdued',
+      badgeText: orders.length > 0 ? 'Live Pipeline' : '0 Orders',
     },
     {
       title: 'Pending Proof Approvals',
-      value: '19',
-      trend: '4 require urgent sign-off',
-      tone: 'critical',
-      badgeText: 'Action Required',
+      value: String(counts.pendingProofs ?? 0),
+      trend: (counts.pendingProofs ?? 0) > 0 ? `${counts.pendingProofs} require sign-off` : 'All proofs up to date',
+      tone: (counts.pendingProofs ?? 0) > 0 ? 'critical' : 'subdued',
+      badgeText: (counts.pendingProofs ?? 0) > 0 ? 'Action Required' : 'Up to Date',
     },
     {
       title: 'Supplier Schedule Batches',
-      value: '6',
-      trend: '3 In Production, 1 Awaiting OTP',
-      tone: 'info',
-      badgeText: 'Factory Active',
+      value: String(counts.activeJobs ?? 0),
+      trend: (counts.activeJobs ?? 0) > 0 ? 'Dispatched to factories' : '0 batches scheduled',
+      tone: (counts.activeJobs ?? 0) > 0 ? 'info' : 'subdued',
+      badgeText: (counts.activeJobs ?? 0) > 0 ? 'Factory Active' : 'Idle',
     },
     {
       title: 'Recent Design Submissions',
-      value: '84',
-      trend: '95.2% Artwork DPI Pass Rate',
-      tone: 'success',
+      value: String(analytics?.recentOrders?.length ?? 0),
+      trend: (analytics?.recentOrders?.length ?? 0) > 0 ? '100% pre-flight checked' : 'Awaiting shopper designs',
+      tone: (analytics?.recentOrders?.length ?? 0) > 0 ? 'success' : 'subdued',
       badgeText: 'Pre-flight Valid',
     },
   ];
 
-  // Supplier Queues Data
-  const supplierQueues = [
-    {
-      name: 'Apex Apparel & Embroidery Mills',
-      category: 'Apparel & Textiles',
-      activeBatch: 'Batch #SCH-2026-APEX-09 (35 items)',
-      capacity: 70,
-      status: 'Operating Normally',
-    },
-    {
-      name: 'Vanguard Thermal Drinkware Labs',
-      category: 'Drinkware / Flasks',
-      activeBatch: 'Batch #SCH-2026-VANGUARD-04 (50 items)',
-      capacity: 85,
-      status: 'High Load',
-    },
-    {
-      name: 'Nordic Leathercraft Co.',
-      category: 'Leather Goods',
-      activeBatch: 'Awaiting minimum 25 design threshold (18 queued)',
-      capacity: 35,
-      status: 'Ready for Batch',
-    },
-    {
-      name: 'Titan Precision Metal & Laser Guild',
-      category: 'Hardware & Metals',
-      activeBatch: 'Batch #SCH-2026-TITAN-02 (28 items)',
-      capacity: 40,
-      status: 'Operating Normally',
-    },
-  ];
-
-  // Orders Table Sample Data
-  const orderRowsData = useMemo(() => [
-    {
-      id: 'ORD-8491',
-      date: 'Oct 19, 2026',
-      customer: 'Sarah Jenkins',
-      product: 'Heavyweight French Terry Hoodie',
-      technique: 'Embroidery',
-      dpi: '320 DPI',
-      status: 'In Production',
-      supplier: 'Apex Mills',
-    },
-    {
-      id: 'ORD-8492',
-      date: 'Oct 19, 2026',
-      customer: 'Michael Chen',
-      product: 'Insulated Hydro Tumbler 32oz',
-      technique: 'Laser Engraving',
-      dpi: '300 DPI',
-      status: 'Feasibility Passed',
-      supplier: 'Vanguard Labs',
-    },
-    {
-      id: 'ORD-8493',
-      date: 'Oct 18, 2026',
-      customer: 'Elena Rostova',
-      product: 'Full Grain Leather Folio',
-      technique: 'Foil Debossing',
-      dpi: '180 DPI (Upscaled)',
-      status: 'Proof Pending',
-      supplier: 'Nordic Leather',
-    },
-    {
-      id: 'ORD-8494',
-      date: 'Oct 18, 2026',
-      customer: 'David Kalu',
-      product: 'Minimalist Titanium Pen',
-      technique: 'Laser Etch',
-      dpi: '350 DPI',
-      status: 'Shipped',
-      supplier: 'Titan Metal Guild',
-    },
-    {
-      id: 'ORD-8495',
-      date: 'Oct 17, 2026',
-      customer: 'Amanda Cruz',
-      product: 'Embroidered Dad Hat',
-      technique: 'Embroidery',
-      dpi: '300 DPI',
-      status: 'Design Received',
-      supplier: 'Apex Mills',
-    },
-  ], []);
-
   // Filtered rows for DataTable
   const filteredOrderRows = useMemo(() => {
-    return orderRowsData
+    return orders
       .filter((row) => {
         if (selectedStatusFilter !== 'ALL' && row.status !== selectedStatusFilter) {
           return false;
@@ -176,29 +131,29 @@ export default function MerchantDashboard() {
         if (filterQuery.trim()) {
           const q = filterQuery.toLowerCase();
           return (
-            row.id.toLowerCase().includes(q) ||
-            row.customer.toLowerCase().includes(q) ||
-            row.product.toLowerCase().includes(q)
+            (row.id && row.id.toLowerCase().includes(q)) ||
+            (row.customer && row.customer.toLowerCase().includes(q)) ||
+            (row.product && row.product.toLowerCase().includes(q))
           );
         }
         return true;
       })
       .map((row) => [
         row.id,
-        row.date,
-        row.customer,
-        row.product,
-        row.technique,
-        row.dpi,
-        row.supplier,
+        row.date || 'Recent',
+        row.customer || 'Anonymous',
+        row.product || 'Custom Apparel',
+        row.technique || 'DTG Print',
+        row.dpi || '300 DPI',
+        row.supplier || 'Auto Assigned',
         <Badge
           key={row.id}
           tone={
-            row.status === 'Shipped'
+            row.status === 'Shipped' || row.status === 'Completed'
               ? 'success'
               : row.status === 'In Production'
               ? 'info'
-              : row.status === 'Proof Pending'
+              : row.status === 'Pending' || row.status === 'Proof Pending'
               ? 'attention'
               : 'subdued'
           }
@@ -206,7 +161,7 @@ export default function MerchantDashboard() {
           {row.status}
         </Badge>,
       ]);
-  }, [orderRowsData, filterQuery, selectedStatusFilter]);
+  }, [orders, filterQuery, selectedStatusFilter]);
 
   const handleSaveHandoffRules = useCallback(() => {
     setHandoffModalOpen(false);
@@ -231,6 +186,10 @@ export default function MerchantDashboard() {
         },
       }}
       secondaryActions={[
+        {
+          content: 'Refresh Live Data',
+          onAction: fetchData,
+        },
         {
           content: 'Manage Handoff Rules',
           onAction: () => setHandoffModalOpen(true),
@@ -312,6 +271,7 @@ export default function MerchantDashboard() {
                         { label: 'Proof Pending', value: 'Proof Pending' },
                         { label: 'In Production', value: 'In Production' },
                         { label: 'Shipped', value: 'Shipped' },
+                        { label: 'Completed', value: 'Completed' },
                       ]}
                       value={selectedStatusFilter}
                       onChange={setSelectedStatusFilter}
@@ -325,20 +285,41 @@ export default function MerchantDashboard() {
                   Active Custom Orders In-Flight ({filteredOrderRows.length})
                 </Text>
 
-                <DataTable
-                  columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                  headings={[
-                    'Order ID',
-                    'Date',
-                    'Customer',
-                    'Product',
-                    'Technique',
-                    'Artwork Resolution',
-                    'Assigned Factory',
-                    'Status',
-                  ]}
-                  rows={filteredOrderRows}
-                />
+                {loading ? (
+                  <Box padding="800">
+                    <InlineStack align="center">
+                      <Spinner accessibilityLabel="Loading orders" size="large" />
+                    </InlineStack>
+                  </Box>
+                ) : filteredOrderRows.length === 0 ? (
+                  <Box padding="600">
+                    <BlockStack gap="200" inlineAlign="center">
+                      <Text variant="headingMd" as="h3" alignment="center">
+                        No custom orders found (0)
+                      </Text>
+                      <Text variant="bodyMd" tone="subdued" as="p" alignment="center">
+                        {filterQuery || selectedStatusFilter !== 'ALL'
+                          ? 'No orders match the selected filter.'
+                          : 'As customers customize products and place orders through your store, they will stream in here in real time.'}
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                ) : (
+                  <DataTable
+                    columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                    headings={[
+                      'Order ID',
+                      'Date',
+                      'Customer',
+                      'Product',
+                      'Technique',
+                      'Artwork Resolution',
+                      'Assigned Factory',
+                      'Status',
+                    ]}
+                    rows={filteredOrderRows}
+                  />
+                )}
               </BlockStack>
             )}
 
@@ -348,6 +329,7 @@ export default function MerchantDashboard() {
                 onScheduleCreated={(schedule) => {
                   setToastMessage(`Batch schedule for ${schedule.designCount} designs authorized and dispatched via OTP.`);
                   setActiveTab(0);
+                  fetchData();
                 }}
               />
             )}
@@ -362,58 +344,45 @@ export default function MerchantDashboard() {
                   Real-time factory machine workload and scheduled design batches.
                 </Text>
 
-                <Layout>
-                  {supplierQueues.map((sup, idx) => (
-                    <Layout.Section key={idx} variant="oneHalf">
-                      <Card>
-                        <BlockStack gap="300">
-                          <InlineStack align="space-between">
-                            <Text variant="headingSm" as="h4">
-                              {sup.name}
-                            </Text>
-                            <Badge
-                              tone={
-                                sup.status === 'High Load'
-                                  ? 'attention'
-                                  : sup.status === 'Ready for Batch'
-                                  ? 'info'
-                                  : 'success'
-                              }
-                            >
-                              {sup.status}
-                            </Badge>
-                          </InlineStack>
-
-                          <Text variant="bodySm" tone="subdued">
-                            Specialization: {sup.category}
-                          </Text>
-
-                          <Divider />
-
-                          <Text variant="bodySm">
-                            Current Queue: <strong>{sup.activeBatch}</strong>
-                          </Text>
-
-                          <BlockStack gap="100">
+                {suppliers.length === 0 ? (
+                  <Box padding="600">
+                    <BlockStack gap="200" inlineAlign="center">
+                      <Text variant="headingSm" as="h4" alignment="center">
+                        No registered suppliers (0)
+                      </Text>
+                      <Text variant="bodySm" tone="subdued" as="p" alignment="center">
+                        Register supplier production accounts via the Supplier Portal or API to monitor queue capacities.
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                ) : (
+                  <Layout>
+                    {suppliers.map((sup, idx) => (
+                      <Layout.Section key={idx} variant="oneHalf">
+                        <Card>
+                          <BlockStack gap="300">
                             <InlineStack align="space-between">
-                              <Text variant="bodySm" tone="subdued">
-                                Machine Utilization:
+                              <Text variant="headingSm" as="h4">
+                                {sup.name || sup.fullName}
                               </Text>
-                              <Text variant="bodySm" fontWeight="bold">
-                                {sup.capacity}%
-                              </Text>
+                              <Badge tone="success">Active</Badge>
                             </InlineStack>
-                            <ProgressBar
-                              progress={sup.capacity}
-                              tone={sup.capacity > 80 ? 'critical' : 'primary'}
-                              size="small"
-                            />
+
+                            <Text variant="bodySm" tone="subdued">
+                              Specialization: {sup.supplierCategory || 'General Manufacturing'}
+                            </Text>
+
+                            <Divider />
+
+                            <Text variant="bodySm">
+                              Contact: <strong>{sup.email}</strong>
+                            </Text>
                           </BlockStack>
-                        </BlockStack>
-                      </Card>
-                    </Layout.Section>
-                  ))}
-                </Layout>
+                        </Card>
+                      </Layout.Section>
+                    ))}
+                  </Layout>
+                )}
               </BlockStack>
             )}
           </BlockStack>
@@ -507,18 +476,21 @@ export default function MerchantDashboard() {
       >
         <Modal.Section>
           <BlockStack gap="300">
-            {supplierQueues.map((sup, idx) => (
-              <Card key={idx} background="bg-surface-secondary">
-                <BlockStack gap="200">
-                  <InlineStack align="space-between">
-                    <Text variant="bodyMd" fontWeight="bold">{sup.name}</Text>
-                    <Badge tone="info">{sup.category}</Badge>
-                  </InlineStack>
-                  <Text variant="bodySm">{sup.activeBatch}</Text>
-                  <ProgressBar progress={sup.capacity} size="small" />
-                </BlockStack>
-              </Card>
-            ))}
+            {suppliers.length === 0 ? (
+              <Text variant="bodyMd" tone="subdued">No active supplier queues found (0).</Text>
+            ) : (
+              suppliers.map((sup, idx) => (
+                <Card key={idx} background="bg-surface-secondary">
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between">
+                      <Text variant="bodyMd" fontWeight="bold">{sup.name || sup.fullName}</Text>
+                      <Badge tone="info">{sup.supplierCategory || 'Factory'}</Badge>
+                    </InlineStack>
+                    <Text variant="bodySm">{sup.email}</Text>
+                  </BlockStack>
+                </Card>
+              ))
+            )}
           </BlockStack>
         </Modal.Section>
       </Modal>

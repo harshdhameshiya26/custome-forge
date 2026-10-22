@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import {
   Page,
   Layout,
@@ -11,18 +12,50 @@ import {
   Divider,
   List,
 } from '@shopify/polaris';
+import api from '../services/api';
 
 /**
  * Billing
- * 
- * Subscription tier & billing plans for CustomForge:
- * - Active tier (Growth Tier with 500 custom orders/month, multi-supplier routing)
- * - Plan comparison cards (Starter, Growth, Enterprise)
- * - Usage meter for production schedules and AI upscale credits
- * 
- * Strictly uses @shopify/polaris components and layout props (zero custom CSS).
+ * Subscription tier & billing plans for CustomForge.
+ * Fetches real usage metrics from the API and starts with 0 utilized orders.
  */
 export default function Billing() {
+  const [usedCount, setUsedCount] = useState(0);
+  const [activePlan, setActivePlan] = useState('Growth Tier');
+  const [loading, setLoading] = useState(true);
+
+  const fetchBillingInfo = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [statusRes, ordersRes] = await Promise.allSettled([
+        api.billing.getStatus(),
+        api.orders.list(),
+      ]);
+
+      if (statusRes.status === 'fulfilled' && statusRes.value?.data?.subscription) {
+        const sub = statusRes.value.data.subscription;
+        setActivePlan(sub.name || 'Growth Tier');
+      }
+
+      if (ordersRes.status === 'fulfilled') {
+        const val = ordersRes.value?.data;
+        const list = Array.isArray(val) ? val : (Array.isArray(val?.items) ? val.items : []);
+        setUsedCount(list.length);
+      } else {
+        setUsedCount(0);
+      }
+
+    } catch {
+      setUsedCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBillingInfo();
+  }, [fetchBillingInfo]);
+
   const plans = [
     {
       name: 'Starter Tier',
@@ -34,7 +67,7 @@ export default function Billing() {
         'Email proof approval',
         'Standard production timeline',
       ],
-      current: false,
+      current: activePlan === 'Starter Tier',
     },
     {
       name: 'Growth Tier (Active)',
@@ -47,7 +80,7 @@ export default function Billing() {
         'Batching engine (25-100 design bundling)',
         'Full customer-merchant proof revision thread',
       ],
-      current: true,
+      current: activePlan.toLowerCase().includes('growth') || activePlan === 'Growth Tier',
     },
     {
       name: 'Enterprise Production',
@@ -59,7 +92,7 @@ export default function Billing() {
         'ERP & Webhook real-time machine sync',
         'Priority phone & pre-flight engineering support',
       ],
-      current: false,
+      current: activePlan === 'Enterprise Production',
     },
   ];
 
@@ -67,11 +100,17 @@ export default function Billing() {
     <Page
       title="Subscription Plans & Tier Billing"
       subtitle="Manage your CustomForge capacity, production batching tiers, and factory connections"
+      secondaryActions={[
+        {
+          content: 'Refresh Usage',
+          onAction: fetchBillingInfo,
+        },
+      ]}
     >
       <BlockStack gap="500">
-        <Banner title="Current Subscription: Growth Tier Active" tone="success">
+        <Banner title={`Current Subscription: ${activePlan} Active`} tone="success">
           <Text as="p" variant="bodyMd">
-            Your store is currently subscribed to the <strong>Growth Tier</strong>. You have utilized 142 of 500 monthly custom order slots.
+            Your store is currently subscribed to the <strong>{activePlan}</strong>. You have utilized <strong>{usedCount}</strong> of 500 monthly custom order slots.
           </Text>
         </Banner>
 

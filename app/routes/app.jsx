@@ -20,12 +20,15 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <PolarisAppProvider i18n={enTranslations}>
         <s-app-nav>
-          <s-link href="/app/merchant">Merchant Dashboard</s-link>
-          <s-link href="/app/editor">Customizer Editor</s-link>
+          <s-link href="/app/orders">Orders</s-link>
+          <s-link href="/app/designs">Designs</s-link>
+          <s-link href="/app/templates">Templates</s-link>
+          <s-link href="/app/customers">Customers</s-link>
+          <s-link href="/app/production">Production</s-link>
+          <s-link href="/app/settings">Settings</s-link>
+          <s-link href="/app/editor">Customizer Studio</s-link>
           <s-link href="/app/proofs">Proof Approval</s-link>
-          <s-link href="/app/orders">Order Tracking</s-link>
-          <s-link href="/app/designs">Customer Designs</s-link>
-          <s-link href="/app/billing">Billing & Plans</s-link>
+          <s-link href="/app/billing">Billing</s-link>
         </s-app-nav>
         <Outlet />
       </PolarisAppProvider>

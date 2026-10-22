@@ -25,27 +25,9 @@ export default function DesignComments({
   onAddComment = () => {},
   currentUserRole = 'merchant',
 }) {
-  const [comments, setComments] = useState(
-    initialComments.length > 0
-      ? initialComments
-      : [
-          {
-            id: 'c1',
-            author: 'Customer',
-            role: 'customer',
-            time: '2 hours ago',
-            content: 'Please ensure the white lettering stands out sharply against the black fabric.',
-          },
-          {
-            id: 'c2',
-            author: 'CustomForge Pre-Press Lead',
-            role: 'merchant',
-            time: '1 hour ago',
-            content: 'We added an underbase white satin stitch layer to guarantee 100% opacity.',
-          },
-        ],
-  );
+  const [comments, setComments] = useState(initialComments);
   const [commentText, setCommentText] = useState('');
+
 
   const handlePost = useCallback(() => {
     if (!commentText.trim()) return;
@@ -70,30 +52,37 @@ export default function DesignComments({
         <Divider />
 
         <BlockStack gap="300">
-          {comments.map((item) => (
-            <Card
-              key={item.id}
-              background={item.role === 'customer' ? 'bg-surface-secondary' : 'bg-surface'}
-            >
-              <BlockStack gap="100">
-                <InlineStack align="space-between">
-                  <InlineStack gap="200" align="center">
-                    <Text variant="bodyMd" fontWeight="bold">
-                      {item.author}
+          {comments.length === 0 ? (
+            <Text variant="bodySm" tone="subdued" as="p">
+              No comments or revisions recorded yet (0).
+            </Text>
+          ) : (
+            comments.map((item) => (
+              <Card
+                key={item.id}
+                background={item.role === 'customer' ? 'bg-surface-secondary' : 'bg-surface'}
+              >
+                <BlockStack gap="100">
+                  <InlineStack align="space-between">
+                    <InlineStack gap="200" align="center">
+                      <Text variant="bodyMd" fontWeight="bold">
+                        {item.author}
+                      </Text>
+                      <Badge tone={item.role === 'customer' ? 'info' : 'success'} size="small">
+                        {item.role.toUpperCase()}
+                      </Badge>
+                    </InlineStack>
+                    <Text variant="bodySm" tone="subdued">
+                      {item.time}
                     </Text>
-                    <Badge tone={item.role === 'customer' ? 'info' : 'success'} size="small">
-                      {item.role.toUpperCase()}
-                    </Badge>
                   </InlineStack>
-                  <Text variant="bodySm" tone="subdued">
-                    {item.time}
-                  </Text>
-                </InlineStack>
-                <Text variant="bodyMd">{item.content}</Text>
-              </BlockStack>
-            </Card>
-          ))}
+                  <Text variant="bodyMd">{item.content}</Text>
+                </BlockStack>
+              </Card>
+            ))
+          )}
         </BlockStack>
+
 
         <BlockStack gap="200">
           <TextField

@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import Design from '../models/design.model.js';
 import DesignRevision from '../models/design-revision.model.js';
+import OtpService from '../services/otpService.js';
 import { logError } from '../utils/logger.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -29,7 +30,8 @@ const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const getOwnerFilter = (shopper) => ({
-  shop: shopper.shop,
+  // Only apply shop filter when shop is known — avoids {shop:null} queries that match nothing
+  ...(shopper.shop ? { shop: shopper.shop } : {}),
   ...(shopper.customerId
     ? { customerId: shopper.customerId, sessionId: null }
     : { customerId: null, sessionId: shopper.sessionId }),
@@ -305,14 +307,46 @@ export const approveRevision = async (request, response, next) => {
     if (!Number.isSafeInteger(version) || version < 1)
       throw makeHttpError(400, 'version must be a positive integer.');
 
-    // Approver identity from middleware or body
-    const approverId   = request.shopper?.customerId || request.body.approverId;
-    const approverRole = request.body.approverRole || 'customer';
+    // 1. Approver identity & role check
+    const approverId = request.shopper?.customerId || request.user?.shopifyCustomerId || (request.user?._id ? String(request.user._id) : null) || request.body.approverId;
+    const approverRole = request.user?.role || request.body.approverRole || 'customer';
+    const approverEmail = request.user?.email || request.shopper?.email || request.body.email;
 
-    if (!approverId)
-      throw makeHttpError(401, 'Approver identity is required.');
-    if (!['customer', 'staff'].includes(approverRole))
-      throw makeHttpError(400, "approverRole must be 'customer' or 'staff'.");
+    if (!approverId) {
+      throw makeHttpError(401, 'User not logged in. An authenticated user is required to approve revisions.');
+    }
+    if (!['customer', 'staff', 'merchant', 'admin'].includes(approverRole)) {
+      throw makeHttpError(403, "Forbidden: approverRole must be 'customer', 'staff', 'merchant', or 'admin'.");
+    }
+
+    // 2. Sensitive Action Guard: Require explicit email OTP verification
+    if (approverEmail) {
+      const inputOtp = request.body?.otp || request.get('x-otp-code');
+      if (!inputOtp) {
+        const otpSend = await OtpService.generateAndSendOtp({
+          email: approverEmail,
+          action: 'REVISION_APPROVAL',
+          referenceId: `${id}_v${version}`,
+          fullName: request.user?.fullName || 'Approver',
+        });
+
+        return response.status(403).json({
+          success: false,
+          requireOtp: true,
+          action: 'REVISION_APPROVAL',
+          message: `OTP verification required before approving revision v${version}. A 6-digit confirmation code has been dispatched to ${approverEmail}.`,
+          version,
+          expiresInSeconds: otpSend.expiresInSeconds,
+        });
+      }
+
+      await OtpService.verifyOtp({
+        email: approverEmail,
+        action: 'REVISION_APPROVAL',
+        referenceId: `${id}_v${version}`,
+        otp: inputOtp,
+      });
+    }
 
     let approvedRevision;
 

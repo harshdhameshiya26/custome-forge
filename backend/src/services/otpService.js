@@ -28,6 +28,10 @@ const ACTION_DESCRIPTIONS = {
   SEND_PROOF_LINK: 'generating and dispatching the customer proof review link',
   CONFIRM_SCHEDULE: 'confirming the supplier production schedule and transferring design files',
   CRITICAL_ACTION: 'authorizing this sensitive customization operation',
+  TRIGGER_HANDOFF: 'triggering automated production handoff for an approved order',
+  REVISION_APPROVAL: 'approving the design revision snapshot',
+  FEEDBACK_APPROVAL: 'approving and moderating customer design feedback',
+  LIBRARY_MANAGE: 'modifying or removing items in the design library',
 };
 
 /**

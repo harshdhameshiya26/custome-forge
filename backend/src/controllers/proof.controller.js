@@ -487,34 +487,52 @@ export const submitProofResponse = async (req, res, next) => {
     let updatedRecord = null;
 
     if (normalizedStatus === 'APPROVED') {
-      // SENSITIVE ACTION GUARD: Require explicit email OTP verification before unblocking production
-      if (req.user?.email) {
-        const inputOtp = req.body?.otp || req.get('x-otp-code');
-        if (!inputOtp) {
-          const otpSend = await OtpService.generateAndSendOtp({
-            email: req.user.email,
-            action: 'PROOF_APPROVAL',
-            referenceId: existingProof.proofId,
-            fullName: cleanAuthor,
-          });
+      // 1. Role & Login Guard: User must be logged in with an authorized role
+      if (!req.user || !req.user.email) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not logged in. You must be logged in with an authorized role to approve this proof.',
+        });
+      }
 
-          return res.status(403).json({
-            success: false,
-            requireOtp: true,
-            message: `OTP verification required before finalizing proof approval. A 6-digit confirmation code has been dispatched to ${req.user.email}.`,
-            proofId: existingProof.proofId,
-            expiresInSeconds: otpSend.expiresInSeconds,
-          });
-        }
+      const allowedRoles = ['customer', 'merchant', 'admin', 'staff', 'designer'];
+      const userRole = String(req.user.role || 'customer').toLowerCase().trim();
+      if (!allowedRoles.includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Insufficient role permissions to approve proof.',
+          requiredRoles: allowedRoles,
+          currentRole: userRole,
+        });
+      }
 
-        // Verify the provided OTP code
-        await OtpService.verifyOtp({
+      // 2. Sensitive Action Guard: Require explicit email OTP verification before unblocking production
+      const inputOtp = req.body?.otp || req.get('x-otp-code');
+      if (!inputOtp) {
+        const otpSend = await OtpService.generateAndSendOtp({
           email: req.user.email,
           action: 'PROOF_APPROVAL',
           referenceId: existingProof.proofId,
-          otp: inputOtp,
+          fullName: cleanAuthor,
+        });
+
+        return res.status(403).json({
+          success: false,
+          requireOtp: true,
+          action: 'PROOF_APPROVAL',
+          message: `OTP verification required before finalizing proof approval. A 6-digit confirmation code has been dispatched to ${req.user.email}.`,
+          proofId: existingProof.proofId,
+          expiresInSeconds: otpSend.expiresInSeconds,
         });
       }
+
+      // Verify the provided OTP code
+      await OtpService.verifyOtp({
+        email: req.user.email,
+        action: 'PROOF_APPROVAL',
+        referenceId: existingProof.proofId,
+        otp: inputOtp,
+      });
 
       // APPROVAL PATH: Production is unlocked
       const updateData = {

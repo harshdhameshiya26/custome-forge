@@ -1,6 +1,7 @@
 /* eslint-env node */
 
 import { processOrderHandoff } from '../services/handoffService.js';
+import OtpService from '../services/otpService.js';
 import { logError } from '../utils/logger.js';
 
 /**
@@ -23,6 +24,59 @@ export const triggerOrderHandoff = async (req, res, next) => {
         },
       });
     }
+
+    // 1. Role & Login Guard: User must be logged in with authorized role
+    if (!req.user || !req.user.email) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'User not logged in. Please log in with an authorized role to trigger production handoff.',
+        },
+      });
+    }
+
+    const allowedRoles = ['merchant', 'admin', 'staff', 'production', 'designer'];
+    const userRole = String(req.user.role || 'customer').toLowerCase().trim();
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN_ROLE',
+          message: 'Forbidden: Insufficient role permissions. Only merchant or production staff roles are authorized to trigger production handoff.',
+          requiredRoles: allowedRoles,
+          currentRole: userRole,
+        },
+      });
+    }
+
+    // 2. Sensitive Action Guard: Require explicit email OTP verification
+    const inputOtp = req.body?.otp || req.get('x-otp-code');
+    if (!inputOtp) {
+      const otpSend = await OtpService.generateAndSendOtp({
+        email: req.user.email,
+        action: 'TRIGGER_HANDOFF',
+        referenceId: String(orderId),
+        fullName: req.user.fullName || 'Merchant',
+      });
+
+      return res.status(403).json({
+        success: false,
+        requireOtp: true,
+        action: 'TRIGGER_HANDOFF',
+        message: `OTP verification required before triggering production handoff. A 6-digit confirmation code has been dispatched to ${req.user.email}.`,
+        orderId: String(orderId),
+        expiresInSeconds: otpSend.expiresInSeconds,
+      });
+    }
+
+    // Verify OTP code
+    await OtpService.verifyOtp({
+      email: req.user.email,
+      action: 'TRIGGER_HANDOFF',
+      referenceId: String(orderId),
+      otp: inputOtp,
+    });
 
     const payload = req.body || {};
 

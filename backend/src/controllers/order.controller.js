@@ -700,6 +700,51 @@ export const handleOrdersMultiplexer = async (req, res, next) => {
   return handleOrderUpdatedWebhook(req, res, next);
 };
 
+/**
+ * @desc    List custom orders for merchant dashboard & tracking
+ * @route   GET /api/orders
+ */
+export const listOrders = async (req, res, next) => {
+  try {
+    const shop =
+      req.query.shop ||
+      req.get('x-shop-domain') ||
+      req.get('x-shopify-shop-domain') ||
+      process.env.SHOPIFY_SHOP ||
+      null;
+
+    let orders = [];
+    try {
+      orders = await prisma.customOrder.findMany({
+        where: shop ? { shop } : {},
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+    } catch {
+      orders = await CustomOrder.find(shop ? { shop } : {}).sort({ createdAt: -1 }).limit(100).lean();
+    }
+
+    const data = (orders || []).map((o) => ({
+      id: o.shopifyOrderId ? `#${o.shopifyOrderId}` : `#${o.orderId}`,
+      rawId: o.orderId,
+      shopifyOrderId: o.shopifyOrderId,
+      date: o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent',
+      customer: o.customerEmail || 'Anonymous Customer',
+      product: o.productType || 'Custom Product',
+      technique: o.customizationType || 'Direct-to-Garment',
+      dpi: '300 DPI',
+      status: o.status || 'Pending',
+      supplier: o.assignedQueue || o.supplierId || 'Auto Assigned',
+      tags: o.tags || [],
+    }));
+
+    return res.status(200).json({ success: true, count: data.length, data });
+  } catch (error) {
+    logError(`[listOrders] ${error.message}`);
+    return next(error);
+  }
+};
+
 export default {
   handleOrderCreatedWebhook,
   handleOrderFulfilledWebhook,
@@ -708,4 +753,6 @@ export default {
   handleOrdersMultiplexer,
   getOrderTimeline,
   updateOrderTimelineStage,
+  listOrders,
 };
+

@@ -11,7 +11,7 @@
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "db:generate": "node --env-file-if-exists=backend/.env ./node_modules/prisma/build/index.js generate",
+    "db:generate": "node scripts/db-generate.js",
     "db:push": "node --env-file-if-exists=backend/.env ./node_modules/prisma/build/index.js db push",
     "db:init": "node backend/src/scripts/init-db.js",
     "backend:dev": "node --watch backend/src/server.js",

@@ -36,7 +36,8 @@ export default function SupplierScheduleInterface({
   const [supplierId, setSupplierId] = useState('sup_apex');
   const [scheduledDate, setScheduledDate] = useState('2026-11-05');
   const [notes, setNotes] = useState('');
-  const [selectedCount, setSelectedCount] = useState(35); // Default valid count
+  const [selectedCount, setSelectedCount] = useState(0); // Starts at 0
+
   
   // OTP Verification Modal States
   const [otpModalOpen, setOtpModalOpen] = useState(false);

@@ -25,6 +25,7 @@ import Design from '../models/design.model.js';
 import DesignRevision from '../models/design-revision.model.js';
 import DesignLibraryItem from '../models/design-library-item.model.js';
 import MerchantSettings from '../models/merchant-settings.model.js';
+import OtpService from '../services/otpService.js';
 import { logError, logWarn } from '../utils/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -487,6 +488,36 @@ export const removeLibraryItem = async (request, response, next) => {
     const { itemId } = request.params;
     if (!isValidId(itemId)) {
       throw makeHttpError(400, 'itemId must be a valid ObjectId.');
+    }
+
+    // Sensitive Action Guard: If user has registered email, require OTP verification
+    const userEmail = request.user?.email || shopper.email || request.body?.email;
+    if (userEmail) {
+      const inputOtp = request.body?.otp || request.get('x-otp-code');
+      if (!inputOtp) {
+        const otpSend = await OtpService.generateAndSendOtp({
+          email: userEmail,
+          action: 'LIBRARY_MANAGE',
+          referenceId: String(itemId),
+          fullName: request.user?.fullName || 'Valued User',
+        });
+
+        return response.status(403).json({
+          success: false,
+          requireOtp: true,
+          action: 'LIBRARY_MANAGE',
+          message: `OTP verification required before removing this library item. A 6-digit confirmation code has been dispatched to ${userEmail}.`,
+          itemId,
+          expiresInSeconds: otpSend.expiresInSeconds,
+        });
+      }
+
+      await OtpService.verifyOtp({
+        email: userEmail,
+        action: 'LIBRARY_MANAGE',
+        referenceId: String(itemId),
+        otp: inputOtp,
+      });
     }
 
     const updated = await DesignLibraryItem.findOneAndUpdate(

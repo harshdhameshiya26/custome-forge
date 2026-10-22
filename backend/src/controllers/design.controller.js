@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import Design from '../models/design.model.js';
 import DesignRevision from '../models/design-revision.model.js';
 import DesignFeedback from '../models/design-feedback.model.js';
+import OtpService from '../services/otpService.js';
 import { logError, logSuccess, logWarn } from '../utils/logger.js';
 
 const MAX_CANVAS_BYTES = 8 * 1024 * 1024;
@@ -18,7 +19,8 @@ const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const getOwnerFilter = (shopper) => ({
-  shop: shopper.shop,
+  // Only apply shop filter when shop is known — avoids {shop:null} queries that match nothing
+  ...(shopper.shop ? { shop: shopper.shop } : {}),
   ...(shopper.customerId
     ? { customerId: shopper.customerId, sessionId: null }
     : { customerId: null, sessionId: shopper.sessionId }),
@@ -535,6 +537,47 @@ export const moderateFeedback = async (request, response, next) => {
     }
     if (!['approved', 'rejected'].includes(status)) {
       throw makeHttpError(400, 'Feedback status must be approved or rejected.');
+    }
+
+    // 1. Role & Login Guard
+    const approverEmail = request.user?.email || request.shopper?.email || request.body?.email;
+    const approverRole = request.user?.role || request.shopper?.role || 'customer';
+
+    if (status === 'approved') {
+      if (!approverEmail) {
+        throw makeHttpError(401, 'User not logged in. An authenticated user is required to approve feedback.');
+      }
+
+      if (!['customer', 'merchant', 'staff', 'admin'].includes(approverRole)) {
+        throw makeHttpError(403, 'Forbidden: Insufficient role permissions to approve feedback.');
+      }
+
+      // 2. Sensitive Action Guard: Require explicit email OTP verification
+      const inputOtp = request.body?.otp || request.get('x-otp-code');
+      if (!inputOtp) {
+        const otpSend = await OtpService.generateAndSendOtp({
+          email: approverEmail,
+          action: 'FEEDBACK_APPROVAL',
+          referenceId: String(feedbackId),
+          fullName: request.user?.fullName || 'Owner',
+        });
+
+        return response.status(403).json({
+          success: false,
+          requireOtp: true,
+          action: 'FEEDBACK_APPROVAL',
+          message: `OTP verification required before approving feedback. A 6-digit confirmation code has been dispatched to ${approverEmail}.`,
+          feedbackId,
+          expiresInSeconds: otpSend.expiresInSeconds,
+        });
+      }
+
+      await OtpService.verifyOtp({
+        email: approverEmail,
+        action: 'FEEDBACK_APPROVAL',
+        referenceId: String(feedbackId),
+        otp: inputOtp,
+      });
     }
 
     const design = await getDesignByOwner(id, request.shopper).select('_id shop').lean();

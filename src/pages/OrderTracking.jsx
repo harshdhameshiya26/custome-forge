@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
+import DesignMockupPreview from '../components/DesignMockupPreview';
 import {
   Page,
   Layout,
@@ -8,394 +9,321 @@ import {
   InlineStack,
   Text,
   Badge,
-  ProgressBar,
   Button,
   ButtonGroup,
-  Banner,
   Box,
   Divider,
-  DataTable,
-  Modal,
+  Banner,
+  Spinner,
+  Select,
 } from '@shopify/polaris';
+import api from '../services/api';
+
+const DEFAULT_STAGES = [
+  { title: 'Order Placed', description: 'Your order has been received.' },
+  { title: 'Design Approved', description: 'Your design has been approved for production.' },
+  { title: 'In Production', description: 'Your order is currently in active manufacturing.' },
+  { title: 'Quality Check', description: 'Pre-flight stitch and print density inspection.' },
+  { title: 'Shipped', description: 'Carrier tracking dispatched.' },
+  { title: 'Delivered', description: 'Delivered to recipient address.' },
+];
 
 /**
  * OrderTracking
- * 
- * Step-by-step visual tracker for custom orders:
- * Design Received -> Artwork Verified -> Feasibility Passed -> Proof Approved -> In Production -> Quality Inspection -> Shipped
- * 
- * Includes carrier tracking integration, batch schedule reference, and proof download.
- * Strictly uses @shopify/polaris components and layout props (zero custom CSS).
+ * Fetches real orders from /api/orders and renders real manufacturing timelines.
+ * Starts with no data (0) when no custom orders exist.
  */
 export default function OrderTracking() {
   const navigate = useNavigate();
   const location = useLocation();
   const basePath = location?.pathname?.startsWith('/app') ? '/app' : '';
 
-  const [selectedOrderId, setSelectedOrderId] = useState('ORD-8491');
-  const [proofPreviewOpen, setProofPreviewOpen] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [contactBanner, setContactBanner] = useState(false);
 
-  // Sample Custom Orders
-  const orders = useMemo(() => [
-    {
-      id: 'ORD-8491',
-      customerName: 'Sarah Jenkins',
-      productTitle: 'Heavyweight French Terry Hoodie',
-      technique: 'Embroidery (Madeira 40)',
-      orderedAt: 'Oct 17, 2026, 09:12 AM',
-      currentStageIndex: 4, // 0 to 6
-      trackingNumber: '1Z9999999999999999',
-      carrier: 'UPS Ground',
-      batchScheduleId: 'SCH-2026-APEX-09',
-      supplier: 'Apex Apparel & Embroidery Mills',
-      estimatedDelivery: 'Oct 24, 2026',
-    },
-    {
-      id: 'ORD-8492',
-      customerName: 'Michael Chen',
-      productTitle: 'Insulated Hydro Tumbler 32oz',
-      technique: 'Laser Engraving 360',
-      orderedAt: 'Oct 18, 2026, 02:40 PM',
-      currentStageIndex: 2,
-      trackingNumber: 'Pending Production Run',
-      carrier: 'FedEx Express',
-      batchScheduleId: 'SCH-2026-VANGUARD-04',
-      supplier: 'Vanguard Thermal Labs',
-      estimatedDelivery: 'Oct 28, 2026',
-    },
-    {
-      id: 'ORD-8493',
-      customerName: 'Elena Rostova',
-      productTitle: 'Full Grain Leather Folio',
-      technique: 'Heat Foil Debossing',
-      orderedAt: 'Oct 19, 2026, 11:05 AM',
-      currentStageIndex: 1,
-      trackingNumber: 'Awaiting Proof Sign-Off',
-      carrier: 'DHL Express',
-      batchScheduleId: 'Unassigned (Awaiting Batch Min 25)',
-      supplier: 'Nordic Leathercraft Co.',
-      estimatedDelivery: 'Nov 02, 2026',
-    },
-  ], []);
+  const fetchOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await api.orders.list();
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.items) ? res.data.items : []);
+      setOrders(list);
 
-  const activeOrder = orders.find((o) => o.id === selectedOrderId) || orders[0];
+      if (list.length > 0 && !selectedOrderId) {
+        setSelectedOrderId(list[0].id);
+      }
+    } catch (err) {
+      console.warn('Could not fetch real orders:', err.message);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedOrderId]);
 
-  // Pipeline Stages Definition
-  const pipelineStages = [
-    {
-      title: 'Design Received',
-      description: 'Customer submitted custom graphic & placement options.',
-      timestamp: 'Oct 17, 09:12 AM',
-      operator: 'Automated Ingestion',
-    },
-    {
-      title: 'Artwork Quality Verified',
-      description: 'Passed 300 DPI resolution, CMYK profile, and bleed check.',
-      timestamp: 'Oct 17, 09:15 AM',
-      operator: 'Pre-flight AI Inspector',
-    },
-    {
-      title: 'Feasibility Passed',
-      description: 'Material and stitch density validated against factory specs.',
-      timestamp: 'Oct 17, 10:04 AM',
-      operator: 'Rule Engine #FEAS-401',
-    },
-    {
-      title: 'Proof Approved & Locked',
-      description: 'Customer & merchant sign-off authenticated via 2FA OTP.',
-      timestamp: 'Oct 18, 04:45 PM',
-      operator: 'Merchant Authorization',
-    },
-    {
-      title: 'In Factory Production',
-      description: 'Assigned to factory schedule batch #SCH-2026-APEX-09. Embroidery active.',
-      timestamp: 'Oct 19, 08:30 AM',
-      operator: 'Apex Mills Head #4',
-    },
-    {
-      title: 'Quality Control Inspection',
-      description: 'Optical inspection against original vector proof.',
-      timestamp: 'Pending Factory Completion',
-      operator: 'Pre-dispatch QC Team',
-    },
-    {
-      title: 'Shipped & Out for Delivery',
-      description: 'Package handed over to carrier with live tracking.',
-      timestamp: 'Estimated Oct 22',
-      operator: 'Logistics Handoff',
-    },
-  ];
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
-  const currentStageIndex = activeOrder.currentStageIndex;
-  const progressRatio = Math.round(((currentStageIndex + 1) / pipelineStages.length) * 100);
+  const activeOrder = useMemo(() => {
+    if (!orders || orders.length === 0) return null;
+    return orders.find((o) => o.id === selectedOrderId) || orders[0];
+  }, [orders, selectedOrderId]);
+
+  // Compute lifecycle steps dynamically based on activeOrder.status
+  const activeOrderSteps = useMemo(() => {
+    if (!activeOrder) return [];
+    const status = (activeOrder.status || '').toUpperCase();
+    let stepIndex = 0;
+    if (status.includes('PROOF') || status.includes('APPROVED')) stepIndex = 1;
+    if (status.includes('PRODUCTION')) stepIndex = 2;
+    if (status.includes('QUALITY') || status.includes('QC')) stepIndex = 3;
+    if (status.includes('SHIP')) stepIndex = 4;
+    if (status.includes('DELIVER') || status.includes('COMPLETE')) stepIndex = 5;
+
+    return DEFAULT_STAGES.map((s, idx) => ({
+      ...s,
+      timestamp: idx <= stepIndex ? (activeOrder.date || 'Completed') : 'Pending',
+      isDone: idx < stepIndex,
+      isActive: idx === stepIndex,
+      isUpcoming: idx > stepIndex,
+    }));
+  }, [activeOrder]);
+
+  if (loading) {
+    return (
+      <Page title="Order Tracking" subtitle="Real-time order lifecycle & manufacturing timeline">
+        <Box padding="800">
+          <InlineStack align="center">
+            <Spinner accessibilityLabel="Loading order tracking" size="large" />
+          </InlineStack>
+        </Box>
+      </Page>
+    );
+  }
+
+  if (!activeOrder || orders.length === 0) {
+    return (
+      <Page
+        title="Order Tracking"
+        subtitle="Real-time order lifecycle & manufacturing timeline"
+        secondaryActions={[
+          {
+            content: 'Refresh',
+            onAction: fetchOrders,
+          },
+          {
+            content: 'Production Queue',
+            onAction: () => navigate(`${basePath}/production`),
+          },
+        ]}
+      >
+        <Card>
+          <Box padding="800">
+            <BlockStack gap="300" inlineAlign="center">
+              <Text variant="headingMd" as="h3" alignment="center">
+                No custom orders found (0)
+              </Text>
+              <Text variant="bodyMd" tone="subdued" as="p" alignment="center">
+                When a customer places a customized order in your store, its complete lifecycle timeline will appear here.
+              </Text>
+              <Button variant="primary" onClick={() => navigate(`${basePath}/editor`)}>
+                Create a Custom Design in Studio
+              </Button>
+            </BlockStack>
+          </Box>
+        </Card>
+      </Page>
+    );
+  }
+
+  const orderOptions = orders.map((o) => ({
+    label: `Order ${o.id} – ${o.customer || 'Customer'} (${o.product || 'Custom'})`,
+    value: o.id,
+  }));
 
   return (
     <Page
-      title={`Custom Order Timeline — #${activeOrder.id}`}
-      subtitle={`${activeOrder.productTitle} for ${activeOrder.customerName}`}
-      backAction={{ content: 'Back to Dashboard', onAction: () => navigate(`${basePath}/dashboard`) }}
-      titleMetadata={
-        <Badge
-          tone={
-            currentStageIndex >= 6
-              ? 'success'
-              : currentStageIndex >= 4
-              ? 'info'
-              : 'attention'
-          }
-        >
-          {pipelineStages[currentStageIndex].title}
-        </Badge>
-      }
+      title={`Order ${activeOrder.id}`}
+      subtitle={`Placed on ${activeOrder.date || 'Recent'} | ${activeOrder.product || 'Custom Product'}`}
+      titleMetadata={<Badge tone="info">{activeOrder.status || 'Processing'}</Badge>}
+      primaryAction={{
+        content: 'View in Store',
+        onAction: () => {},
+      }}
       secondaryActions={[
         {
-          content: 'View Digital Proof',
-          onAction: () => setProofPreviewOpen(true),
+          content: 'Refresh',
+          onAction: fetchOrders,
+        },
+        {
+          content: 'Production Queue',
+          onAction: () => navigate(`${basePath}/production`),
         },
       ]}
     >
       <BlockStack gap="500">
-        {/* Order Selector Banner */}
-        <Card>
-          <InlineStack align="space-between" alignBlock="center">
-            <BlockStack gap="100">
-              <Text variant="headingSm" as="h4">
-                Select Active Custom Order to Track:
-              </Text>
-              <Text variant="bodySm" tone="subdued">
-                Monitor real-time machine status and factory queue progress
-              </Text>
-            </BlockStack>
-            <ButtonGroup>
-              {orders.map((ord) => (
-                <Button
-                  key={ord.id}
-                  pressed={ord.id === activeOrder.id}
-                  onClick={() => setSelectedOrderId(ord.id)}
-                >
-                  {ord.id} ({ord.customerName})
-                </Button>
-              ))}
-            </ButtonGroup>
-          </InlineStack>
-        </Card>
-
-        {/* Progress Overview Bar */}
-        <Card>
-          <BlockStack gap="300">
-            <InlineStack align="space-between">
-              <Text variant="headingSm" as="h4">
-                Overall Manufacturing &amp; Fulfillment Progress
-              </Text>
-              <Text variant="bodyMd" fontWeight="bold">
-                Stage {currentStageIndex + 1} of {pipelineStages.length} ({progressRatio}%)
-              </Text>
+        {orders.length > 1 && (
+          <Card>
+            <InlineStack align="space-between" alignBlock="center">
+              <Text variant="bodyMd" fontWeight="semibold" as="span">Select Order to Track:</Text>
+              <Box minWidth="300px">
+                <Select
+                  label="Select Order"
+                  labelHidden
+                  options={orderOptions}
+                  value={selectedOrderId || activeOrder.id}
+                  onChange={setSelectedOrderId}
+                />
+              </Box>
             </InlineStack>
+          </Card>
+        )}
 
-            <ProgressBar
-              progress={progressRatio}
-              tone={progressRatio === 100 ? 'success' : 'primary'}
-              size="medium"
-            />
-          </BlockStack>
-        </Card>
+        {contactBanner && (
+          <Banner
+            title="Support Request Received"
+            tone="info"
+            onDismiss={() => setContactBanner(false)}
+          >
+            <Text as="p" variant="bodyMd">
+              Our merchant production desk has been alerted regarding Order {activeOrder.id}. We will reply within 1 business hour.
+            </Text>
+          </Banner>
+        )}
 
+        {/* ── Main Two-Column Layout ── */}
         <Layout>
-          {/* Main Stage Timeline Column */}
+          {/* LEFT: Stepper Timeline */}
           <Layout.Section>
-            <BlockStack gap="300">
-              <Text variant="headingMd" as="h3">
-                Lifecycle Milestone Progression
-              </Text>
+            <Card>
+              <BlockStack gap="500">
+                <Text variant="headingMd" as="h2">Order Fulfillment Lifecycle</Text>
 
-              {pipelineStages.map((stage, index) => {
-                const isCompleted = index < currentStageIndex;
-                const isCurrent = index === currentStageIndex;
-                const isUpcoming = index > currentStageIndex;
-
-                return (
-                  <Card
-                    key={index}
-                    background={
-                      isCurrent
-                        ? 'bg-surface-secondary'
-                        : isCompleted
-                        ? 'bg-surface'
-                        : 'bg-surface-tertiary'
-                    }
-                  >
-                    <BlockStack gap="200">
-                      <InlineStack align="space-between" alignBlock="center">
-                        <InlineStack gap="300" align="center">
+                <BlockStack gap="400">
+                  {activeOrderSteps.map((step, idx) => (
+                    <Card
+                      key={step.title}
+                      background={
+                        step.isActive
+                          ? 'bg-surface-secondary'
+                          : step.isDone
+                          ? 'bg-surface'
+                          : 'bg-surface'
+                      }
+                    >
+                      <InlineStack align="space-between" alignBlock="start">
+                        <InlineStack gap="300" alignBlock="start">
                           <Badge
-                            tone={
-                              isCompleted
-                                ? 'success'
-                                : isCurrent
-                                ? 'info'
-                                : 'subdued'
-                            }
+                            tone={step.isDone ? 'success' : step.isActive ? 'magic' : 'subdued'}
+                            size="large"
                           >
-                            Step {index + 1}
+                            {step.isDone ? '✓' : `${idx + 1}`}
                           </Badge>
-                          <Text
-                            variant="headingSm"
-                            as="h4"
-                            fontWeight={isCurrent ? 'bold' : 'medium'}
-                          >
-                            {stage.title}
-                          </Text>
+
+                          <BlockStack gap="100">
+                            <InlineStack gap="200" alignBlock="center">
+                              <Text
+                                variant="bodyMd"
+                                fontWeight={step.isActive ? 'bold' : 'semibold'}
+                                as="span"
+                              >
+                                {step.title}
+                              </Text>
+                              {step.isActive && <Badge tone="magic" size="small">Active Now</Badge>}
+                              {step.isDone && <Badge tone="success" size="small">Completed</Badge>}
+                            </InlineStack>
+
+                            <Text variant="bodySm" tone="subdued" as="p">
+                              {step.description}
+                            </Text>
+                          </BlockStack>
                         </InlineStack>
 
-                        <Text variant="bodySm" tone="subdued">
-                          {stage.timestamp}
-                        </Text>
-                      </InlineStack>
-
-                      <Text variant="bodyMd" tone={isUpcoming ? 'subdued' : undefined}>
-                        {stage.description}
-                      </Text>
-
-                      <Divider />
-
-                      <InlineStack align="space-between">
-                        <Text variant="bodySm" tone="subdued">
-                          Handler / System: {stage.operator}
-                        </Text>
-                        <Badge
-                          tone={
-                            isCompleted
-                              ? 'success'
-                              : isCurrent
-                              ? 'attention'
-                              : 'subdued'
-                          }
-                          size="small"
+                        <Text
+                          variant="bodySm"
+                          tone={step.isUpcoming ? 'subdued' : 'default'}
+                          fontWeight={step.isActive ? 'semibold' : 'regular'}
+                          as="span"
                         >
-                          {isCompleted ? 'Completed' : isCurrent ? 'Active Run' : 'Pending'}
-                        </Badge>
+                          {step.timestamp}
+                        </Text>
                       </InlineStack>
-                    </BlockStack>
-                  </Card>
-                );
-              })}
-            </BlockStack>
+                    </Card>
+                  ))}
+                </BlockStack>
+              </BlockStack>
+            </Card>
           </Layout.Section>
 
-          {/* Logistics & Supplier Meta Column */}
+          {/* RIGHT: Product Details Card & Help Card */}
           <Layout.Section variant="oneThird">
             <BlockStack gap="400">
               <Card>
                 <BlockStack gap="300">
-                  <Text variant="headingSm" as="h4">
-                    Production &amp; Logistics Details
-                  </Text>
-                  <Divider />
+                  <Text variant="headingMd" as="h2">Product Details</Text>
 
-                  <BlockStack gap="200">
-                    <Text variant="bodySm" tone="subdued">Assigned Supplier</Text>
-                    <Text variant="bodyMd" fontWeight="semibold">{activeOrder.supplier}</Text>
+                  <Box minHeight="160px" borderRadius="200" overflowX="hidden" overflowY="hidden">
+                    <DesignMockupPreview
+                      productType={activeOrder.product || 'T-Shirt'}
+                      graphicText={activeOrder.customer || 'Custom Design'}
+                      height={160}
+                      showGuides={false}
+                    />
+                  </Box>
 
-                    <Text variant="bodySm" tone="subdued">Batch Production Schedule</Text>
-                    <Text variant="bodyMd">{activeOrder.batchScheduleId}</Text>
-
-                    <Text variant="bodySm" tone="subdued">Customization Method</Text>
-                    <Text variant="bodyMd">{activeOrder.technique}</Text>
-
-                    <Text variant="bodySm" tone="subdued">Estimated Dispatch / Delivery</Text>
-                    <Text variant="bodyMd" fontWeight="bold">{activeOrder.estimatedDelivery}</Text>
-
-                    <Divider />
-
-                    <Text variant="bodySm" tone="subdued">Carrier Tracking</Text>
-                    <Text variant="bodyMd">{activeOrder.carrier}: {activeOrder.trackingNumber}</Text>
+                  <BlockStack gap="150">
+                    <Text variant="headingSm" as="h3" fontWeight="bold">
+                      {activeOrder.product || 'Custom Apparel'}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      Customer: {activeOrder.customer || 'Direct Order'}
+                    </Text>
                   </BlockStack>
 
-                  <Box paddingBlockStart="200">
-                    <Button fullWidth onClick={() => alert(`Tracking ${activeOrder.trackingNumber}`)}>
-                      Track on Carrier Website
-                    </Button>
-                  </Box>
+                  <Divider />
+
+                  <BlockStack gap="150">
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" tone="subdued" as="span">Technique</Text>
+                      <Text variant="bodySm" fontWeight="semibold" as="span">{activeOrder.technique || 'DTG Print'}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" tone="subdued" as="span">Assigned To</Text>
+                      <Text variant="bodySm" fontWeight="semibold" as="span">{activeOrder.supplier || 'Production Floor'}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" tone="subdued" as="span">Status</Text>
+                      <Text variant="bodySm" fontWeight="semibold" as="span">{activeOrder.status || 'Active'}</Text>
+                    </InlineStack>
+                  </BlockStack>
+
+                  <Divider />
+
+                  <Button
+                    variant="primary"
+                    onClick={() => navigate(`${basePath}/editor`)}
+                  >
+                    View in Studio
+                  </Button>
                 </BlockStack>
               </Card>
 
               <Card>
-                <BlockStack gap="300">
-                  <Text variant="headingSm" as="h4">
-                    Handoff Rules Enforced
+                <BlockStack gap="250">
+                  <Text variant="headingMd" as="h2">Help</Text>
+                  <Text variant="bodySm" tone="subdued" as="p">
+                    Have questions about this production run? Contact our merchant support desk.
                   </Text>
-                  <Divider />
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm">DPI Verification:</Text>
-                      <Badge tone="success">Passed 320 DPI</Badge>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm">Feasibility Gate:</Text>
-                      <Badge tone="success">100% Compliant</Badge>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm">Proof OTP Sign-off:</Text>
-                      <Badge tone="success">Verified (2FA)</Badge>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm">Batch Quantity:</Text>
-                      <Badge tone="info">Apex Run (35 items)</Badge>
-                    </InlineStack>
-                  </BlockStack>
+                  <Button onClick={() => setContactBanner(true)}>
+                    Contact Support
+                  </Button>
                 </BlockStack>
               </Card>
             </BlockStack>
           </Layout.Section>
         </Layout>
       </BlockStack>
-
-      {/* Digital Proof Visual Modal */}
-      <Modal
-        open={proofPreviewOpen}
-        onClose={() => setProofPreviewOpen(false)}
-        title={`Production Proof Preview — Order #${activeOrder.id}`}
-        primaryAction={{
-          content: 'Download Vector / High-Res PNG',
-          onAction: () => setProofPreviewOpen(false),
-        }}
-        secondaryActions={[
-          {
-            content: 'Close',
-            onAction: () => setProofPreviewOpen(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <Card background="bg-surface-secondary">
-              <Box padding="600">
-                <BlockStack gap="200" align="center">
-                  <Text variant="headingLg" as="p" tone="magic">
-                    [ HI-RES PRODUCTION PROOF ]
-                  </Text>
-                  <Text variant="bodyMd">
-                    {activeOrder.productTitle} — {activeOrder.technique}
-                  </Text>
-                  <Badge tone="success">DPI: 320 | CMYK Calibrated</Badge>
-                </BlockStack>
-              </Box>
-            </Card>
-
-            <DataTable
-              columnContentTypes={['text', 'text']}
-              headings={['Parameter', 'Specification']}
-              rows={[
-                ['Artwork File', 'hoodie_crest_embroidery_v2.ai'],
-                ['Color Profile', 'Madeira Classic Rayon Thread #1147'],
-                ['Placement Coordinates', 'X: 120mm, Y: 180mm from left shoulder seam'],
-                ['Stitch Count', '8,400 stitches'],
-                ['Approved Signer', activeOrder.customerName],
-              ]}
-            />
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
     </Page>
   );
 }

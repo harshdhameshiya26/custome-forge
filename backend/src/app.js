@@ -17,6 +17,10 @@ import notificationRoutes from './routes/notification.routes.js';
 import userRoutes from './routes/user.routes.js';
 import scheduleRoutes from './routes/schedule.routes.js';
 import supplierRoutes from './routes/supplier.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
+import templateRoutes from './routes/template.routes.js';
+import customerRoutes from './routes/customer.routes.js';
+import productionRoutes from './routes/production.routes.js';
 import { createNotification } from './services/notificationService.js';
 import { logError } from './utils/logger.js';
 
@@ -27,14 +31,33 @@ app.disable('x-powered-by');
 // 1. CORS Configuration
 // -----------------------------------------------------------------------------
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
-    : false,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Shopify-Hmac-Sha256', 'X-Shopify-Topic', 'X-Shopify-Shop-Domain'],
+  origin: (origin, callback) => {
+    // Allow any origin: Shopify Admin, App Bridge iframes, localhost, tunnels
+    callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'X-Shopify-Hmac-Sha256',
+    'X-Shopify-Topic',
+    'X-Shopify-Shop-Domain',
+    'X-Shop',
+    'x-shop',
+    'x-shopify-shop-domain',
+    'x-customer-id',
+    'x-otp-code',
+  ],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
   credentials: true,
+  optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 
 // -----------------------------------------------------------------------------
 // 2. Request Parsing with Raw Buffer Support (for Shopify Webhook HMAC Verification)
@@ -114,6 +137,18 @@ app.use('/api/notifications', notificationRoutes);
 // Feature: Supplier Registration & Design Scheduling System
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/suppliers', supplierRoutes);
+
+// Dashboard Analytics & KPI Metrics
+app.use('/api/analytics', analyticsRoutes);
+
+// Design Templates Catalog & Creation
+app.use('/api/templates', templateRoutes);
+
+// Merchant Customer Directory
+app.use('/api/customers', customerRoutes);
+
+// Production Queue & Workflow Routing
+app.use('/api/production', productionRoutes);
 
 // -----------------------------------------------------------------------------
 // 5. 404 Route Not Found Handler
