@@ -253,7 +253,7 @@ export const createComment = async (req, res, next) => {
     try {
       const proofCommentItem = {
         id: commentId,
-        author: authorName || (normalizedRole === 'MERCHANT' ? 'Merchant' : 'Customer'),
+        author: authorName || (normalizedRole === 'MERCHANT' ? 'Merchant' : 'Supplier'),
         role: normalizedRole,
         message: cleanContent,
         createdAt: createdRecord.createdAt || new Date(),

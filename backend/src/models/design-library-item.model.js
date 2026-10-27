@@ -38,28 +38,31 @@ const designLibraryItemSchema = new mongoose.Schema(
     },
     shopifyCustomerId: {
       type: String,
-      required: [true, 'shopifyCustomerId is required'],
+      required: false,
+      default: 'merchant',
       trim: true,
       index: true,
     },
 
     // ------------------------------------------------------------------
-    // Source Design reference (the original tbl_designs document)
+    // Source Design reference (optional if saved directly from Studio)
     // ------------------------------------------------------------------
     designId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'tbl_Design',
-      required: [true, 'designId is required'],
+      required: false,
+      default: null,
       index: true,
     },
 
     // ------------------------------------------------------------------
-    // Pinned approved Revision reference (tbl_design_revisions document)
+    // Pinned approved Revision reference (optional if saved directly from Studio)
     // ------------------------------------------------------------------
     revisionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'tbl_DesignRevision',
-      required: [true, 'revisionId is required'],
+      required: false,
+      default: null,
     },
 
     // ------------------------------------------------------------------
@@ -198,7 +201,7 @@ designLibraryItemSchema.index(
 // Fast "is there already a library item for this design?" check
 designLibraryItemSchema.index(
   { shop: 1, shopifyCustomerId: 1, designId: 1 },
-  { unique: true },
+  { unique: true, sparse: true },
 );
 
 // Public-design lookup (merchant-shared items visible to all customers)

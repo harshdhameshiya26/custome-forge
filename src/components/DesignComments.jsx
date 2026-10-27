@@ -33,7 +33,7 @@ export default function DesignComments({
     if (!commentText.trim()) return;
     const newEntry = {
       id: `c_${Date.now()}`,
-      author: currentUserRole === 'merchant' ? 'Merchant Administrator' : 'Customer',
+      author: currentUserRole === 'supplier' ? 'Supplier Specialist' : 'Merchant Administrator',
       role: currentUserRole,
       time: 'Just now',
       content: commentText.trim(),
@@ -60,7 +60,7 @@ export default function DesignComments({
             comments.map((item) => (
               <Card
                 key={item.id}
-                background={item.role === 'customer' ? 'bg-surface-secondary' : 'bg-surface'}
+                background={item.role === 'supplier' ? 'bg-surface-secondary' : 'bg-surface'}
               >
                 <BlockStack gap="100">
                   <InlineStack align="space-between">
@@ -68,7 +68,7 @@ export default function DesignComments({
                       <Text variant="bodyMd" fontWeight="bold">
                         {item.author}
                       </Text>
-                      <Badge tone={item.role === 'customer' ? 'info' : 'success'} size="small">
+                      <Badge tone={item.role === 'supplier' ? 'info' : 'success'} size="small">
                         {item.role.toUpperCase()}
                       </Badge>
                     </InlineStack>

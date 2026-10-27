@@ -50,7 +50,7 @@ export default function MerchantDashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
+      setLoading((prev) => (orders.length === 0 && !analytics ? true : false));
       const [analyticsRes, ordersRes, suppliersRes] = await Promise.allSettled([
         api.analytics.dashboard(),
         api.orders.list(),
@@ -59,30 +59,23 @@ export default function MerchantDashboard() {
 
       if (analyticsRes.status === 'fulfilled' && analyticsRes.value?.data) {
         setAnalytics(analyticsRes.value.data);
-      } else {
-        setAnalytics(null);
       }
 
       if (ordersRes.status === 'fulfilled') {
         const val = ordersRes.value?.data;
         setOrders(Array.isArray(val) ? val : (Array.isArray(val?.items) ? val.items : []));
-      } else {
-        setOrders([]);
       }
 
       if (suppliersRes.status === 'fulfilled') {
         const val = suppliersRes.value?.data;
         setSuppliers(Array.isArray(val) ? val : (Array.isArray(val?.items) ? val.items : []));
-      } else {
-        setSuppliers([]);
       }
-
     } catch (err) {
       console.warn('Dashboard data fetch error:', err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orders.length, analytics]);
 
   useEffect(() => {
     fetchData();
@@ -189,6 +182,7 @@ export default function MerchantDashboard() {
         {
           content: 'Refresh Live Data',
           onAction: fetchData,
+          loading,
         },
         {
           content: 'Manage Handoff Rules',
@@ -326,9 +320,18 @@ export default function MerchantDashboard() {
             {/* TAB 1: SUPPLIER SCHEDULE INTERFACE */}
             {activeTab === 1 && (
               <SupplierScheduleInterface
+                availableDesigns={orders}
+                suppliers={suppliers}
                 onScheduleCreated={(schedule) => {
-                  setToastMessage(`Batch schedule for ${schedule.designCount} designs authorized and dispatched via OTP.`);
-                  setActiveTab(0);
+                  setToastMessage(
+                    schedule.supplierNotification?.scheduled
+                      ? `Schedule for ${schedule.designCount} designs is confirmed. The supplier email is queued for the scheduled time.`
+                      : schedule.supplierNotification?.inProgress
+                      ? `Schedule for ${schedule.designCount} designs is confirmed. The supplier email is being delivered.`
+                      : schedule.supplierNotification?.sent === false
+                      ? `Schedule confirmed for ${schedule.designCount} designs, but the supplier email failed. Retry it from the schedule panel.`
+                      : `Schedule for ${schedule.designCount} designs confirmed and emailed to the supplier.`,
+                  );
                   fetchData();
                 }}
               />

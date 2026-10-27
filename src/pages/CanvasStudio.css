@@ -1,0 +1,1380 @@
+/*
+ * CanvasStudio.css
+ * Scoped exclusively to the Custom-Forge Studio page via the .cfs-root selector.
+ * No rules leak to global Polaris or application styles.
+ */
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 0. Google Fonts */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap');
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 1. Root Shell                                                        */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-root {
+  --cfs-bg: #0f1117;
+  --cfs-surface: #1a1d27;
+  --cfs-panel: #141720;
+  --cfs-card: #1e2132;
+  --cfs-border: rgba(255,255,255,0.07);
+  --cfs-border-active: rgba(99,102,241,0.6);
+  --cfs-text: #e8eaf6;
+  --cfs-text-muted: #7b82a0;
+  --cfs-text-dim: #4a5068;
+  --cfs-accent: #6366f1;
+  --cfs-accent-glow: rgba(99,102,241,0.25);
+  --cfs-accent2: #06b6d4;
+  --cfs-success: #10b981;
+  --cfs-warn: #f59e0b;
+  --cfs-danger: #ef4444;
+  --cfs-canvas-bg: #12151f;
+  --cfs-radius: 10px;
+  --cfs-radius-lg: 16px;
+  --cfs-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --cfs-shadow-panel: 0 2px 12px rgba(0,0,0,0.35);
+
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+  background: var(--cfs-bg);
+  color: var(--cfs-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 2. Topbar                                                            */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-topbar {
+  height: 52px;
+  background: var(--cfs-panel);
+  border-bottom: 1px solid var(--cfs-border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.cfs-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.3px;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.cfs-topbar-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--cfs-accent), var(--cfs-accent2));
+}
+
+.cfs-topbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--cfs-border);
+  flex-shrink: 0;
+}
+
+.cfs-topbar-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cfs-text-muted);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cfs-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 3. Body Layout (sidebar | canvas | right-panel)                     */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 4. Left Sidebar                                                      */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-sidebar {
+  width: 64px;
+  background: var(--cfs-panel);
+  border-right: 1px solid var(--cfs-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 2px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.cfs-tool-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--cfs-text-muted);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  position: relative;
+}
+
+.cfs-tool-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--cfs-text);
+  transform: scale(1.04);
+}
+
+.cfs-tool-btn.active {
+  background: var(--cfs-accent-glow);
+  color: var(--cfs-accent);
+}
+
+.cfs-tool-btn .cfs-tool-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cfs-tool-btn .cfs-tool-label {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.2px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 5. Inspector Panel (left popout from sidebar)                       */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-inspector {
+  width: 280px;
+  background: var(--cfs-surface);
+  border-right: 1px solid var(--cfs-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+.cfs-inspector.collapsed {
+  width: 0;
+}
+
+.cfs-inspector-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--cfs-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.cfs-inspector-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--cfs-text-muted);
+}
+
+.cfs-inspector-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cfs-inspector-body::-webkit-scrollbar {
+  width: 4px;
+}
+.cfs-inspector-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cfs-inspector-body::-webkit-scrollbar-thumb {
+  background: var(--cfs-border);
+  border-radius: 4px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 6. Section headings inside inspector                                */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-section-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--cfs-text-dim);
+  margin-bottom: 6px;
+}
+
+.cfs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cfs-section + .cfs-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--cfs-border);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 7. Form controls                                                     */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cfs-text-muted);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.cfs-input,
+.cfs-select,
+.cfs-textarea {
+  width: 100%;
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  border-radius: 6px;
+  color: var(--cfs-text);
+  font-size: 12px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.cfs-input:focus,
+.cfs-select:focus,
+.cfs-textarea:focus {
+  border-color: var(--cfs-border-active);
+  box-shadow: 0 0 0 2px var(--cfs-accent-glow);
+}
+
+.cfs-select {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237b82a0' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 8. Slider (range input)                                             */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfs-slider-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cfs-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cfs-slider-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cfs-accent);
+  min-width: 32px;
+  text-align: right;
+}
+
+.cfs-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--cfs-card);
+  outline: none;
+  cursor: pointer;
+}
+
+.cfs-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--cfs-accent);
+  box-shadow: 0 0 6px var(--cfs-accent-glow);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.cfs-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.cfs-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--cfs-accent);
+  border: none;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 9. Button variants                                                   */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+  letter-spacing: 0.1px;
+}
+
+.cfs-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.cfs-btn-ghost {
+  background: transparent;
+  color: var(--cfs-text-muted);
+  border: 1px solid var(--cfs-border);
+}
+
+.cfs-btn-ghost:hover:not(:disabled) {
+  background: rgba(255,255,255,0.05);
+  color: var(--cfs-text);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cfs-btn-primary {
+  background: var(--cfs-accent);
+  color: #fff;
+  box-shadow: 0 2px 12px var(--cfs-accent-glow);
+}
+
+.cfs-btn-primary:hover:not(:disabled) {
+  background: #5254cc;
+  box-shadow: 0 4px 18px rgba(99,102,241,0.45);
+  transform: translateY(-1px);
+}
+
+.cfs-btn-secondary {
+  background: var(--cfs-card);
+  color: var(--cfs-text);
+  border: 1px solid var(--cfs-border);
+}
+
+.cfs-btn-secondary:hover:not(:disabled) {
+  background: #272b3f;
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cfs-btn-danger {
+  background: rgba(239,68,68,0.12);
+  color: var(--cfs-danger);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+
+.cfs-btn-danger:hover:not(:disabled) {
+  background: rgba(239,68,68,0.22);
+}
+
+.cfs-btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.cfs-btn-xs {
+  padding: 3px 8px;
+  font-size: 10px;
+  border-radius: 5px;
+}
+
+.cfs-btn-icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 7px;
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  color: var(--cfs-text-muted);
+  font-size: 14px;
+}
+
+.cfs-btn-icon:hover:not(:disabled) {
+  color: var(--cfs-text);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cfs-btn-toggle {
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  color: var(--cfs-text-muted);
+}
+
+.cfs-btn-toggle.active {
+  background: var(--cfs-accent-glow);
+  border-color: var(--cfs-accent);
+  color: var(--cfs-accent);
+}
+
+.cfs-btn-toggle:hover:not(:disabled) {
+  background: rgba(255,255,255,0.05);
+  color: var(--cfs-text);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 10. Canvas Stage                                                     */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-canvas-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--cfs-canvas-bg);
+  overflow: hidden;
+  position: relative;
+}
+
+.cfs-canvas-toolbar {
+  height: 40px;
+  background: var(--cfs-panel);
+  border-bottom: 1px solid var(--cfs-border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cfs-canvas-scroll {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.cfs-canvas-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.cfs-canvas-scroll::-webkit-scrollbar-track { background: transparent; }
+.cfs-canvas-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+}
+
+.cfs-canvas-stage {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.6);
+  background: #e5e7eb;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 11. Print zone overlay on canvas                                     */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-print-zone {
+  position: absolute;
+  border: 1.5px dashed rgba(99,102,241,0.5);
+  border-radius: 2px;
+  pointer-events: none;
+  transition: border-color 0.2s;
+}
+
+.cfs-print-zone::before,
+.cfs-print-zone::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: rgba(99,102,241,0.7);
+  border-style: solid;
+}
+
+.cfs-print-zone::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+
+.cfs-print-zone::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 12. Design overlay layers on canvas                                  */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-design-layer {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cfs-design-image-wrap {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cfs-design-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.cfs-design-text {
+  position: absolute;
+  text-align: center;
+  line-height: 1.15;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 13. CSS Image filter controls (Canva-style adjustments panel)       */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cfs-blend-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cfs-blend-pill {
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--cfs-border);
+  background: var(--cfs-card);
+  color: var(--cfs-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.cfs-blend-pill.active {
+  background: var(--cfs-accent-glow);
+  border-color: var(--cfs-accent);
+  color: var(--cfs-accent);
+}
+
+.cfs-blend-pill:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--cfs-text);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 14. Color swatches                                                   */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cfs-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  outline: none;
+}
+
+.cfs-swatch:hover {
+  transform: scale(1.18);
+}
+
+.cfs-swatch.active {
+  border-color: var(--cfs-accent);
+  box-shadow: 0 0 0 2px var(--cfs-bg), 0 0 0 4px var(--cfs-accent);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 15. Right properties panel                                          */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-right-panel {
+  width: 240px;
+  background: var(--cfs-surface);
+  border-left: 1px solid var(--cfs-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.cfs-right-panel-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--cfs-border);
+  flex-shrink: 0;
+}
+
+.cfs-right-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cfs-right-panel-body::-webkit-scrollbar { width: 4px; }
+.cfs-right-panel-body::-webkit-scrollbar-track { background: transparent; }
+.cfs-right-panel-body::-webkit-scrollbar-thumb {
+  background: var(--cfs-border);
+  border-radius: 4px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 16. Product thumbnail cards in panel                                 */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-product-thumb {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--cfs-border);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cfs-card);
+  position: relative;
+}
+
+.cfs-product-thumb:hover {
+  border-color: rgba(255,255,255,0.2);
+  transform: scale(1.03);
+}
+
+.cfs-product-thumb.active {
+  border-color: var(--cfs-accent);
+  box-shadow: 0 0 0 1px var(--cfs-accent), 0 0 12px var(--cfs-accent-glow);
+}
+
+.cfs-product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.cfs-product-thumb-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 6px;
+  background: rgba(0,0,0,0.7);
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 17. Template & element cards                                         */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-template-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cfs-template-card {
+  border-radius: 8px;
+  border: 1px solid var(--cfs-border);
+  background: var(--cfs-card);
+  padding: 10px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  text-align: center;
+}
+
+.cfs-template-card:hover {
+  border-color: rgba(255,255,255,0.15);
+  background: #252840;
+  transform: translateY(-2px);
+}
+
+.cfs-template-card-icon {
+  font-size: 22px;
+  margin-bottom: 5px;
+}
+
+.cfs-template-card-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cfs-text);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cfs-template-card-sub {
+  font-size: 9px;
+  color: var(--cfs-text-muted);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 18. Layer list                                                       */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cfs-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.cfs-layer-row:hover,
+.cfs-layer-row.active {
+  border-color: var(--cfs-accent);
+  background: rgba(99,102,241,0.06);
+}
+
+.cfs-layer-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.cfs-layer-name {
+  font-size: 11px;
+  color: var(--cfs-text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cfs-layer-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 19. Badge / pill                                                     */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.cfs-badge-accent {
+  background: var(--cfs-accent-glow);
+  color: var(--cfs-accent);
+}
+
+.cfs-badge-success {
+  background: rgba(16,185,129,0.15);
+  color: var(--cfs-success);
+}
+
+.cfs-badge-warn {
+  background: rgba(245,158,11,0.15);
+  color: var(--cfs-warn);
+}
+
+.cfs-badge-muted {
+  background: rgba(255,255,255,0.05);
+  color: var(--cfs-text-muted);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 20. Dropzone                                                         */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-dropzone {
+  border: 2px dashed var(--cfs-border);
+  border-radius: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--cfs-card);
+}
+
+.cfs-dropzone:hover,
+.cfs-dropzone.drag-active {
+  border-color: var(--cfs-accent);
+  background: rgba(99,102,241,0.05);
+}
+
+.cfs-dropzone-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.cfs-dropzone-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cfs-text);
+  margin-bottom: 4px;
+}
+
+.cfs-dropzone-sub {
+  font-size: 10px;
+  color: var(--cfs-text-muted);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 21. Toast / notification                                             */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.cfs-toast {
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-width: 260px;
+  max-width: 360px;
+  box-shadow: var(--cfs-shadow);
+  pointer-events: all;
+  animation: cfs-toast-in 0.25s ease;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cfs-toast-success { border-color: rgba(16,185,129,0.3); }
+.cfs-toast-error { border-color: rgba(239,68,68,0.3); }
+.cfs-toast-info { border-color: rgba(99,102,241,0.3); }
+
+@keyframes cfs-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cfs-toast-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.cfs-toast-body { flex: 1; }
+.cfs-toast-title { font-size: 12px; font-weight: 700; color: var(--cfs-text); margin-bottom: 2px; }
+.cfs-toast-msg   { font-size: 11px; color: var(--cfs-text-muted); line-height: 1.4; }
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 22. Modal overlay                                                    */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: cfs-modal-bg-in 0.2s ease;
+}
+
+@keyframes cfs-modal-bg-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.cfs-modal {
+  background: var(--cfs-surface);
+  border: 1px solid var(--cfs-border);
+  border-radius: var(--cfs-radius-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--cfs-shadow);
+  animation: cfs-modal-in 0.22s ease;
+}
+
+@keyframes cfs-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.cfs-modal-header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--cfs-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.cfs-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cfs-text);
+}
+
+.cfs-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cfs-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--cfs-border);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 23. Product category tabs                                            */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-cat-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 2px;
+}
+
+.cfs-cat-tabs::-webkit-scrollbar { height: 0; }
+
+.cfs-cat-tab {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--cfs-border);
+  background: transparent;
+  color: var(--cfs-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.cfs-cat-tab:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--cfs-text);
+}
+
+.cfs-cat-tab.active {
+  background: var(--cfs-accent);
+  border-color: var(--cfs-accent);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 24. Product grid (for category / product switcher)                  */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 25. Effects pills                                                    */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-effect-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.cfs-effect-pill {
+  flex: 1;
+  min-width: 50px;
+  padding: 6px 0;
+  text-align: center;
+  border-radius: 7px;
+  border: 1px solid var(--cfs-border);
+  background: var(--cfs-card);
+  color: var(--cfs-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.cfs-effect-pill.active {
+  background: var(--cfs-accent-glow);
+  border-color: var(--cfs-accent);
+  color: var(--cfs-accent);
+}
+
+.cfs-effect-pill:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--cfs-text);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 26. Misc utilities                                                   */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cfs-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cfs-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cfs-divider {
+  height: 1px;
+  background: var(--cfs-border);
+  margin: 2px 0;
+}
+
+.cfs-text-xs { font-size: 10px; color: var(--cfs-text-muted); }
+.cfs-text-sm { font-size: 11px; color: var(--cfs-text-muted); }
+.cfs-text-md { font-size: 12px; color: var(--cfs-text); }
+.cfs-text-bold { font-weight: 700; }
+.cfs-text-accent { color: var(--cfs-accent); }
+.cfs-text-success { color: var(--cfs-success); }
+.cfs-text-danger  { color: var(--cfs-danger); }
+
+.cfs-flex-1 { flex: 1; }
+.cfs-flex-wrap { flex-wrap: wrap; }
+.cfs-overflow-hidden { overflow: hidden; }
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 27. Segmented control                                                */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-seg {
+  display: flex;
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cfs-seg-btn {
+  flex: 1;
+  padding: 5px 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cfs-text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  font-family: inherit;
+}
+
+.cfs-seg-btn.active {
+  background: var(--cfs-accent);
+  color: #fff;
+}
+
+.cfs-seg-btn:hover:not(.active) {
+  background: rgba(255,255,255,0.04);
+  color: var(--cfs-text);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 28. Spinner                                                          */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: cfs-spin 0.7s linear infinite;
+}
+
+@keyframes cfs-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 29. Canvas checkerboard placeholder (for transparency preview)      */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-transparency-bg {
+  background-image: linear-gradient(45deg, #555 25%, transparent 25%),
+    linear-gradient(-45deg, #555 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #555 75%),
+    linear-gradient(-45deg, transparent 75%, #555 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+  background-color: #444;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 30. Scrollable section override                                      */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-scroll-y {
+  overflow-y: auto;
+}
+
+.cfs-scroll-y::-webkit-scrollbar { width: 4px; }
+.cfs-scroll-y::-webkit-scrollbar-track { background: transparent; }
+.cfs-scroll-y::-webkit-scrollbar-thumb {
+  background: var(--cfs-border);
+  border-radius: 4px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 31. Right panel product info card                                   */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-product-info-card {
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  border-radius: var(--cfs-radius);
+  overflow: hidden;
+}
+
+.cfs-product-info-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #1c1e2d;
+  display: block;
+}
+
+.cfs-product-info-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfs-product-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cfs-text);
+}
+
+.cfs-product-subtitle {
+  font-size: 10px;
+  color: var(--cfs-text-muted);
+}
+
+.cfs-product-price {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 32. Color input (native picker wrapper)                              */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-color-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cfs-card);
+  border: 1px solid var(--cfs-border);
+  border-radius: 6px;
+  padding: 5px 10px;
+}
+
+.cfs-color-picker {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+
+.cfs-color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+.cfs-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.cfs-color-hex {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--cfs-text-muted);
+  flex: 1;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 33. Publish CTA area                                                 */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-publish-cta {
+  background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(6,182,212,0.08));
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: var(--cfs-radius);
+  padding: 12px;
+  text-align: center;
+}
+
+.cfs-publish-cta-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cfs-text);
+  margin-bottom: 4px;
+}
+
+.cfs-publish-cta-sub {
+  font-size: 10px;
+  color: var(--cfs-text-muted);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 34. Responsive tweaks                                                */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+@media (max-width: 900px) {
+  .cfs-right-panel { width: 200px; }
+  .cfs-inspector   { width: 240px; }
+}
+
+@media (max-width: 720px) {
+  .cfs-right-panel { display: none; }
+  .cfs-inspector   { width: 220px; }
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+/* 35. Nudge button cluster                                             */
+/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+.cfs-nudge-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  grid-template-rows: repeat(3, 28px);
+  gap: 3px;
+  justify-content: center;
+}
+
+.cfs-nudge-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid var(--cfs-border);
+  background: var(--cfs-card);
+  color: var(--cfs-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+
+.cfs-nudge-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.07);
+  color: var(--cfs-text);
+}

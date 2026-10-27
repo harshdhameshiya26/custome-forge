@@ -5,7 +5,7 @@ import CustomOrder from '../models/custom-order.model.js';
 import { logError } from '../utils/logger.js';
 
 /**
- * GET /api/production
+ * GET /api/production/queue
  * Returns real production jobs from the CustomOrder collection.
  * Returns empty list when no orders have been placed yet.
  *
@@ -102,7 +102,7 @@ export const getProductionQueue = async (req, res) => {
 };
 
 /**
- * PATCH /api/production/:orderId
+ * PATCH /api/production/queue/:orderId
  * Updates a production job's status and/or assigned team.
  */
 export const updateProductionJob = async (req, res) => {

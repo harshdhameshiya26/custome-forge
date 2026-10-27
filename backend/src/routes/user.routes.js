@@ -11,6 +11,7 @@ import {
   updateProfile,
   logoutUser,
   deleteUser,
+  listDirectory,
 } from '../controllers/user.controller.js';
 import { authenticateUser, requireVerifiedUser } from '../middleware/authenticate.js';
 import { validate } from '../middleware/validate.js';
@@ -29,6 +30,12 @@ const router = express.Router();
 // ─────────────────────────────────────────────────────────────────────────────
 // Public routes (no authentication required)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/users/directory
+ * Public quick-reference directory of registered Merchants and Suppliers.
+ */
+router.get('/directory', listDirectory);
 
 /**
  * POST /api/users/register

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router';
 import {
   AppProvider,
@@ -22,9 +22,20 @@ import ProofApproval from './pages/ProofApproval';
 import OrderTracking from './pages/OrderTracking';
 import ProductionQueue from './pages/ProductionQueue';
 import DesignTemplates from './pages/DesignTemplates';
-import Customers from './pages/Customers';
+import UserPage from './pages/User';
+import SupplierSchedules from './pages/SupplierSchedules';
+import ProductionScheduling from './pages/ProductionScheduling';
 import Settings from './pages/Settings';
 import Billing from './pages/Billing';
+
+const getStoredUser = () => {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    return JSON.parse(localStorage.getItem('customforge_user') || 'null');
+  } catch {
+    return null;
+  }
+};
 
 /**
  * AppLayout
@@ -36,7 +47,7 @@ import Billing from './pages/Billing';
  *   2. Orders
  *   3. Designs
  *   4. Templates
- *   5. Customers
+ *   5. User
  *   6. Production
  *   7. Settings
  * - Sidebar footer card: "Upgrade Plan - Unlock more features for your store."
@@ -46,6 +57,7 @@ import Billing from './pages/Billing';
 function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [currentUser, setCurrentUser] = useState(getStoredUser);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -63,6 +75,24 @@ function AppLayout() {
   }, [navigate]);
 
   const pathname = location.pathname;
+  const role = currentUser?.role;
+
+  useEffect(() => {
+    const syncUser = () => setCurrentUser(getStoredUser());
+    window.addEventListener('customforge:auth', syncUser);
+    window.addEventListener('storage', syncUser);
+    return () => {
+      window.removeEventListener('customforge:auth', syncUser);
+      window.removeEventListener('storage', syncUser);
+    };
+  }, []);
+
+  if (role === 'supplier') {
+    return pathname === '/user' ? <UserPage /> : <SupplierSchedules />;
+  }
+  if (role !== 'merchant') {
+    return <UserPage />;
+  }
 
   // Polaris TopBar matching Image 1 ("My Shopify Store" dropdown and "Sahdev" avatar)
   const topBarMarkup = (
@@ -117,14 +147,24 @@ function AppLayout() {
             onClick: () => handleNavClick('/templates'),
           },
           {
-            label: 'Customers',
-            selected: pathname.startsWith('/customers'),
-            onClick: () => handleNavClick('/customers'),
+            label: 'User',
+            selected: pathname.startsWith('/user'),
+            onClick: () => handleNavClick('/user'),
           },
           {
             label: 'Production',
             selected: pathname.startsWith('/production'),
             onClick: () => handleNavClick('/production'),
+          },
+          {
+            label: 'Schedule Mail Service',
+            selected: pathname.startsWith('/supplier/schedules') || pathname.startsWith('/schedules'),
+            onClick: () => handleNavClick('/supplier/schedules'),
+          },
+          {
+            label: 'Production scheduling',
+            selected: pathname.startsWith('/production-scheduling'),
+            onClick: () => handleNavClick('/production-scheduling'),
           },
           {
             label: 'Settings',
@@ -181,6 +221,9 @@ function AppLayout() {
     >
       <Box padding="400">
         <Routes>
+          <Route path="/supplier/schedules" element={<SupplierSchedules />} />
+          <Route path="/schedules" element={<SupplierSchedules />} />
+          <Route path="/production-scheduling" element={<ProductionScheduling />} />
           {/* 1. Dashboard (Screen 1) */}
           <Route path="/" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -210,8 +253,8 @@ function AppLayout() {
           {/* 7. Design Templates (Screen 7) */}
           <Route path="/templates" element={<DesignTemplates />} />
 
-          {/* 8. Customers Directory (Screen 8) */}
-          <Route path="/customers" element={<Customers />} />
+          {/* 8. User account */}
+          <Route path="/user" element={<UserPage />} />
 
           {/* 9. Settings & Production Handoff Rules (Screen 9) */}
           <Route path="/settings" element={<Settings />} />
@@ -242,7 +285,10 @@ export default function App() {
   return (
     <AppProvider i18n={enTranslations}>
       <Router>
-        <AppLayout />
+        <Routes>
+          <Route path="/login" element={<UserPage />} />
+          <Route path="*" element={<AppLayout />} />
+        </Routes>
       </Router>
     </AppProvider>
   );

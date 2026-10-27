@@ -7,6 +7,7 @@ import {
   verifyScheduleOtp,
   listSchedules,
   getScheduleById,
+  sendSupplierScheduleEmail,
 } from '../controllers/schedule.controller.js';
 import {
   registerSupplier,
@@ -78,7 +79,7 @@ router.post(
 
 /**
  * GET /api/schedules
- * List schedules with role-based scoping (merchants see all, suppliers see their own).
+ * List schedules with role-based scoping (merchants see their own, suppliers see assigned schedules).
  */
 router.get(
   '/',
@@ -126,6 +127,15 @@ router.post(
   verifyRole(['merchant']),
   validate(verifyScheduleOtpSchema),
   verifyScheduleOtp,
+);
+
+router.post(
+  '/:scheduleId/send-email',
+  authenticateToken,
+  requireVerifiedUser,
+  verifyRole(['merchant']),
+  validate(requestScheduleOtpSchema),
+  sendSupplierScheduleEmail,
 );
 
 /**

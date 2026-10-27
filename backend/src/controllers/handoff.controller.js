@@ -36,8 +36,8 @@ export const triggerOrderHandoff = async (req, res, next) => {
       });
     }
 
-    const allowedRoles = ['merchant', 'admin', 'staff', 'production', 'designer'];
-    const userRole = String(req.user.role || 'customer').toLowerCase().trim();
+    const allowedRoles = ['merchant'];
+    const userRole = String(req.user.role || '').toLowerCase().trim();
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,

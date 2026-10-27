@@ -29,36 +29,72 @@ export default function CustomerDesigns() {
   const location = useLocation();
   const basePath = location?.pathname?.startsWith('/app') ? '/app' : '';
 
-  const [designs, setDesigns] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [designs, setDesigns] = useState(() => {
+    try {
+      const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('customforge_saved_designs') : null;
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [bannerAlert, setBannerAlert] = useState(null);
   const [deleteConfirmDesign, setDeleteConfirmDesign] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Fetch from backend
+  // Fetch from backend and merge with local storage
   const fetchDesigns = useCallback(() => {
     setLoading(true);
     setError(null);
+
+    // 1. Read locally saved designs from localStorage for instant display
+    let localList = [];
+    try {
+      localList = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+      if (!Array.isArray(localList)) localList = [];
+    } catch {
+      localList = [];
+    }
+
+    // 2. Fetch from backend and merge seamlessly
     api.library
       .listAll()
       .then((json) => {
-        let list = [];
+        let remoteList = [];
         if (Array.isArray(json?.data)) {
-          list = json.data;
+          remoteList = json.data;
         } else if (Array.isArray(json?.data?.items)) {
-          list = json.data.items;
+          remoteList = json.data.items;
         }
-        setDesigns(list);
+
+        // Merge without duplicates
+        const combined = [...localList];
+        remoteList.forEach((remote) => {
+          const rId = String(remote.id || remote._id);
+          const exists = combined.some(
+            (item) =>
+              String(item.id || item._id) === rId ||
+              (item.name === remote.name && item.shopifyProductId === remote.shopifyProductId),
+          );
+          if (!exists) {
+            combined.push({ ...remote, id: rId });
+          }
+        });
+
+        try {
+          localStorage.setItem('customforge_saved_designs', JSON.stringify(combined));
+        } catch {}
+
+        setDesigns(combined);
       })
       .catch((err) => {
         console.warn('Could not load designs from API:', err.message);
-        setDesigns([]);
+        setDesigns(localList);
       })
       .finally(() => setLoading(false));
   }, []);
-
 
   useEffect(() => {
     fetchDesigns();
@@ -70,16 +106,31 @@ export default function CustomerDesigns() {
     return designs.filter(
       (d) =>
         (d.name || '').toLowerCase().includes(q) ||
-        (d.tags || []).some((t) => t.toLowerCase().includes(q))
+        (d.tags || []).some((t) => t.toLowerCase().includes(q)),
     );
   }, [designs, searchQuery]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteConfirmDesign) return;
+    const targetId = deleteConfirmDesign.id || deleteConfirmDesign._id;
     setDeleting(true);
     try {
-      await api.library.remove(deleteConfirmDesign.id);
-      setDesigns((prev) => prev.filter((d) => d.id !== deleteConfirmDesign.id));
+      await api.library.remove(targetId).catch(() => {});
+
+      // Remove from localStorage
+      try {
+        const stored = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+        const updated = stored.filter(
+          (d) =>
+            String(d.id || d._id) !== String(targetId) &&
+            d.name !== deleteConfirmDesign.name,
+        );
+        localStorage.setItem('customforge_saved_designs', JSON.stringify(updated));
+      } catch {}
+
+      setDesigns((prev) =>
+        prev.filter((d) => String(d.id || d._id) !== String(targetId)),
+      );
       setBannerAlert({
         tone: 'info',
         title: 'Design Removed',
@@ -106,6 +157,7 @@ export default function CustomerDesigns() {
         onAction: () => navigate(`${basePath}/editor`),
       }}
       secondaryActions={[
+        { content: 'Refresh', onAction: fetchDesigns, loading },
         { content: 'Templates Catalog', onAction: () => navigate(`${basePath}/templates`) },
         { content: 'Proof Approvals', onAction: () => navigate(`${basePath}/proofs`) },
       ]}
@@ -140,7 +192,7 @@ export default function CustomerDesigns() {
         />
 
         {/* Design Cards */}
-        {loading ? (
+        {loading && designs.length === 0 ? (
           <Card>
             <SkeletonBodyText lines={6} />
           </Card>
@@ -160,49 +212,52 @@ export default function CustomerDesigns() {
           </Card>
         ) : (
           <Layout>
-            {filteredDesigns.map((design) => (
-              <Layout.Section key={design.id} variant="oneThird">
-                <Card>
-                  <BlockStack gap="300">
-                    {/* Real product mockup preview */}
-                    <DesignMockupPreview
-                      designText={design.name}
-                      designImage={design.thumbnailUrl}
-                      productLabel={design.tags?.[0] || ''}
-                      size="sm"
-                      showGuides={false}
-                    />
+            {filteredDesigns.map((design) => {
+              const dId = design.id || design._id;
+              const createdDate = design.createdAt ? new Date(design.createdAt) : new Date();
+              return (
+                <Layout.Section key={dId} variant="oneThird">
+                  <Card>
+                    <BlockStack gap="300">
+                      {/* Real product mockup preview */}
+                      <DesignMockupPreview
+                        designText={design.name || design.canvasState?.text || 'Custom Design'}
+                        designImage={design.thumbnailUrl || design.canvasState?.uploadedImageUrl}
+                        productLabel={design.tags?.[0] || design.shopifyProductId || 'T-Shirt'}
+                        size="sm"
+                        showGuides={false}
+                      />
 
-                    {/* Title & Tags */}
-                    <BlockStack gap="100">
-                      <InlineStack align="space-between" alignBlock="start">
-                        <Text variant="headingSm" as="h3" fontWeight="bold">
-                          {design.name}
+                      {/* Title & Tags */}
+                      <BlockStack gap="100">
+                        <InlineStack align="space-between" alignBlock="start">
+                          <Text variant="headingSm" as="h3" fontWeight="bold">
+                            {design.name || 'Untitled Design'}
+                          </Text>
+                          {design.tags?.[0] && (
+                            <Badge tone="info" size="small">{design.tags[0]}</Badge>
+                          )}
+                        </InlineStack>
+                        <Text variant="bodySm" tone="subdued" as="p">
+                          Saved {createdDate.toLocaleDateString('en-US', {
+                            month: 'short', day: '2-digit', year: 'numeric',
+                          })}
                         </Text>
-                        {design.tags?.[0] && (
-                          <Badge tone="info" size="small">{design.tags[0]}</Badge>
-                        )}
-                      </InlineStack>
-                      <Text variant="bodySm" tone="subdued" as="p">
-                        Saved {new Date(design.createdAt).toLocaleDateString('en-US', {
-                          month: 'short', day: '2-digit', year: 'numeric',
-                        })}
-                      </Text>
-                    </BlockStack>
+                      </BlockStack>
 
-                    <Divider />
+                      <Divider />
 
-                    {/* Actions */}
-                    <InlineStack align="space-between" alignBlock="center" wrap gap="200">
-                      <Button
-                        variant="primary"
-                        size="slim"
-                        onClick={() =>
-                          navigate(`${basePath}/editor?libraryItem=${design.id}`)
-                        }
-                      >
-                        Apply to Product
-                      </Button>
+                      {/* Actions */}
+                      <InlineStack align="space-between" alignBlock="center" wrap gap="200">
+                        <Button
+                          variant="primary"
+                          size="slim"
+                          onClick={() =>
+                            navigate(`${basePath}/editor?libraryItem=${dId}`)
+                          }
+                        >
+                          Apply to Product
+                        </Button>
                       <Button
                         tone="critical"
                         variant="plain"
@@ -215,7 +270,8 @@ export default function CustomerDesigns() {
                   </BlockStack>
                 </Card>
               </Layout.Section>
-            ))}
+            );
+          })}
           </Layout>
         )}
       </BlockStack>

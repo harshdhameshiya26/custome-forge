@@ -14,6 +14,12 @@ const designSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    productVariantId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
     shop: {
       type: String,
       required: [true, 'shop is required'],
@@ -82,7 +88,7 @@ const designSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Designer & Merchant template support
+    // Merchant template support
     isTemplate: {
       type: Boolean,
       default: false,
@@ -101,8 +107,8 @@ const designSchema = new mongoose.Schema(
     },
     createdByRole: {
       type: String,
-      enum: ['customer', 'designer', 'merchant', 'supplier'],
-      default: 'customer',
+      enum: ['merchant', 'supplier'],
+      default: 'merchant',
     },
     createdByUserId: {
       type: String,
@@ -135,9 +141,9 @@ const designSchema = new mongoose.Schema(
   }
 );
 
-// Require at least one owner identifier: customerId or sessionId (unless it is a template or created by designer/merchant)
+// Require at least one owner identifier: customerId or sessionId (unless it is a template or created by merchant)
 designSchema.pre('validate', function (next) {
-  if (!this.customerId && !this.sessionId && !this.isTemplate && this.createdByRole === 'customer') {
+  if (!this.customerId && !this.sessionId && !this.isTemplate && this.createdByRole !== 'merchant') {
     this.invalidate('customerId', 'At least one of customerId or sessionId is required to persist the design across sessions');
     this.invalidate('sessionId', 'At least one of customerId or sessionId is required to persist the design across sessions');
   }

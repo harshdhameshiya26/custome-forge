@@ -1,62 +1,56 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router';
-import {
-  Page,
-  Layout,
-  Card,
-  BlockStack,
-  InlineStack,
-  Text,
-  Badge,
-  Button,
-  ButtonGroup,
-  TextField,
-  Select,
-  Banner,
-  Divider,
-  Box,
-  RangeSlider,
-  DropZone,
-  Tabs,
-  Modal,
-  ProgressBar,
-} from '@shopify/polaris';
-import ArtworkValidatorModal from '../components/ArtworkValidatorModal';
-import FeasibilityWarning from '../components/FeasibilityWarning';
-import PrintPreviewModal from '../components/PrintPreviewModal';
-import VersionComparisonModal from '../components/VersionComparisonModal';
-import DesignMockupPreview from '../components/DesignMockupPreview';
-import api from '../services/api';
-
-
 /**
- * CustomizerEditor (Screen 2 from Image 1)
+ * CustomizerEditor - Canva-Style Design Studio
  *
- * Full Feature Set:
- * - Products > Custom T-Shirt > Customize breadcrumbs
- * - Top action bar: Undo, Redo, Preview (PrintPreviewModal), Save Design
- * - Left tool selector: Templates, Text, Upload, Elements, Shapes, Layers
- * - Text inspector panel: Text input ("Good Vibes"), Font family, Style/Alignment, Color swatches, Effects (None, Shadow, Outline, Curve)
- * - Center Mockup Canvas: Realistic garment preview with artwork & typography rendering
- * - Right Product Config: Product details ($24.99), Color swatches, Size pills, "Add to Cart", "Save Design"
- * - Retains ArtworkValidatorModal, FeasibilityWarning, PrintPreviewModal, and VersionComparisonModal.
- *
- * Strictly built with @shopify/polaris components and properties (zero custom CSS).
+ * Refactored from original CustomizerEditor.jsx per spec:
+ *  1. Manufacturing & printing validation logic REMOVED (FeasibilityWarning,
+ *     PrintPreviewModal, ArtworkValidatorModal, technique-incompatibility checks).
+ *  2. "Publish to Storefront" + "Save Design" flows KEPT intact (same API calls).
+ *  3. CSS-only image editing: brightness, contrast, hue-rotate, saturation,
+ *     opacity, blend-mode, drop-shadow - scoped to .cfs-root.
+ *  4. Expanded product catalog with categories + external/custom base products.
+ *  5. All API endpoints, Shopify Polaris modals (PublishToStorefrontModal,
+ *     VersionComparisonModal), DB mutations, and global state remain untouched.
  */
 
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router';
+import PropTypes from 'prop-types';
+
+// Polaris modals we still need (publish + version history)
+import PublishToStorefrontModal from '../components/PublishToStorefrontModal';
+import VersionComparisonModal from '../components/VersionComparisonModal';
+
+// Services / utilities - untouched
+import api from '../services/api';
+import { removeImageBackground } from '../services/backgroundRemoval';
+import { createProductArtwork } from '../utils/createProductArtwork';
+import { getProductPrintArea } from '../utils/productPrintAreas';
+
+// Scoped studio CSS (no global impact)
+import './CanvasStudio.css';
+
+// Mockup images
 import whiteTshirtImg from '../assets/mockups/white_tshirt.jpg';
 import blackTshirtImg from '../assets/mockups/black_tshirt.jpg';
 import hoodieImg from '../assets/mockups/hoodie.jpg';
 import mugImg from '../assets/mockups/mug.jpg';
 import phoneCaseImg from '../assets/mockups/phone_case.jpg';
 
-const PRODUCTS = [
+// 
+// Static Data
+// 
+
+/** All built-in catalog products. External / non-store products can be added
+ *  here or passed in via storeProducts prop. */
+const BUILT_IN_PRODUCTS = [
+  //  Apparel 
   {
     id: 'tshirt',
-    name: 'Custom T-Shirt',
-    subtitle: 'Unisex Classic Tee',
+    category: 'Apparel',
+    name: 'Classic Tee',
+    subtitle: 'Unisex 100% Cotton',
     price: '$24.99',
-    colors: ['#ffffff', '#18181b', '#1e3a8a', '#991b1b', '#374151'],
+    colors: ['#ffffff', '#18x181b', '#1e3a8a', '#991b1b', '#374151'],
     colorNames: ['White', 'Black', 'Navy', 'Crimson', 'Charcoal'],
     image: whiteTshirtImg,
     darkImage: blackTshirtImg,
@@ -64,80 +58,1006 @@ const PRODUCTS = [
   },
   {
     id: 'hoodie',
-    name: 'Custom Hoodie',
-    subtitle: 'Unisex Premium French Terry',
+    category: 'Apparel',
+    name: 'Premium Hoodie',
+    subtitle: 'Unisex French Terry',
     price: '$48.00',
-    colors: ['#ffffff', '#18181b', '#475569', '#15803d'],
+    colors: ['#ffffff', '#18x181b', '#475569', '#15803d'],
     colorNames: ['White', 'Black', 'Heather Grey', 'Forest Green'],
     image: hoodieImg,
     compatibleTechniques: ['embroidery', 'dtg'],
   },
   {
+    id: 'crop_tee',
+    category: 'Apparel',
+    name: 'Crop Tee',
+    subtitle: "Women's Fitted Crop",
+    price: '$22.99',
+    colors: ['#ffffff', '#fce7f3', '#18x181b', '#7c3aed'],
+    colorNames: ['White', 'Pink Blush', 'Black', 'Violet'],
+    image: whiteTshirtImg,
+    darkImage: blackTshirtImg,
+    compatibleTechniques: ['dtg', 'screen_print'],
+  },
+  {
+    id: 'longsleeve',
+    category: 'Apparel',
+    name: 'Long-Sleeve Tee',
+    subtitle: 'Unisex Thermal Knit',
+    price: '$32.00',
+    colors: ['#ffffff', '#18x181b', '#1e3a8a'],
+    colorNames: ['White', 'Black', 'Navy'],
+    image: whiteTshirtImg,
+    darkImage: blackTshirtImg,
+    compatibleTechniques: ['dtg', 'screen_print'],
+  },
+  //  Drinkware 
+  {
     id: 'mug',
-    name: 'Ceramic Bistro Mug',
+    category: 'Drinkware',
+    name: 'Ceramic Mug',
     subtitle: '15oz Matte Stoneware',
     price: '$18.50',
-    colors: ['#ffffff', '#18181b', '#0284c7'],
+    colors: ['#ffffff', '#18x181b', '#0284c7'],
     colorNames: ['White', 'Matte Black', 'Cobalt Blue'],
     image: mugImg,
     compatibleTechniques: ['laser', 'uv_print'],
   },
   {
+    id: 'travel_mug',
+    category: 'Drinkware',
+    name: 'Travel Mug',
+    subtitle: '20oz Stainless Steel',
+    price: '$28.00',
+    colors: ['#d1d5db', '#18x181b', '#7c3aed'],
+    colorNames: ['Silver', 'Matte Black', 'Royal Purple'],
+    image: mugImg,
+    compatibleTechniques: ['laser', 'uv_print'],
+  },
+  {
+    id: 'tumbler',
+    category: 'Drinkware',
+    name: '40oz Tumbler',
+    subtitle: 'Insulated Stainless',
+    price: '$34.00',
+    colors: ['#d1d5db', '#18x181b', '#dc2626'],
+    colorNames: ['Silver', 'Matte Black', 'Red'],
+    image: mugImg,
+    compatibleTechniques: ['laser'],
+  },
+  //  Accessories 
+  {
     id: 'phone_case',
-    name: 'Tough Armor Phone Case',
+    category: 'Accessories',
+    name: 'Tough Phone Case',
     subtitle: 'Dual-Layer Impact Polycarbonate',
     price: '$22.00',
-    colors: ['#ffffff', '#18181b', '#d97706'],
+    colors: ['#ffffff', '#18x181b', '#d97706'],
     colorNames: ['White', 'Black', 'Amber'],
     image: phoneCaseImg,
     compatibleTechniques: ['uv_print'],
   },
+  {
+    id: 'tote_bag',
+    category: 'Accessories',
+    name: 'Canvas Tote Bag',
+    subtitle: '15L Natural Canvas',
+    price: '$19.00',
+    colors: ['#f3e8d0', '#18x181b'],
+    colorNames: ['Natural', 'Black'],
+    image: whiteTshirtImg,
+    compatibleTechniques: ['screen_print', 'dtg'],
+  },
+  {
+    id: 'cap',
+    category: 'Accessories',
+    name: 'Snapback Cap',
+    subtitle: 'Flat Brim, Adjustable',
+    price: '$26.00',
+    colors: ['#ffffff', '#18x181b', '#1e3a8a'],
+    colorNames: ['White', 'Black', 'Navy'],
+    image: whiteTshirtImg,
+    darkImage: blackTshirtImg,
+    compatibleTechniques: ['embroidery'],
+  },
+  //  Home & Decor 
+  {
+    id: 'throw_pillow',
+    category: 'Home & Decor',
+    name: 'Throw Pillow',
+    subtitle: '18-18 Polyester Cover',
+    price: '$29.00',
+    colors: ['#ffffff', '#18x181b', '#f59e0b'],
+    colorNames: ['White', 'Black', 'Amber'],
+    image: whiteTshirtImg,
+    compatibleTechniques: ['dtg'],
+  },
+  {
+    id: 'framed_poster',
+    category: 'Home & Decor',
+    name: 'Framed Art Print',
+    subtitle: 'Giclee on Archival Paper',
+    price: '$44.00',
+    colors: ['#ffffff'],
+    colorNames: ['White'],
+    image: whiteTshirtImg,
+    compatibleTechniques: ['dtg'],
+  },
+  //  Stationery 
+  {
+    id: 'notebook',
+    category: 'Stationery',
+    name: 'Hardcover Notebook',
+    subtitle: 'A5, 160 pages',
+    price: '$16.00',
+    colors: ['#ffffff', '#18x181b', '#0284c7'],
+    colorNames: ['White', 'Black', 'Blue'],
+    image: whiteTshirtImg,
+    compatibleTechniques: ['uv_print'],
+  },
+  //  Custom / External 
+  {
+    id: '__custom__',
+    category: 'Custom',
+    name: '+ Add Custom Product',
+    subtitle: 'Link or upload your own base product',
+    price: '',
+    colors: ['#ffffff'],
+    colorNames: ['Default'],
+    image: whiteTshirtImg,
+    compatibleTechniques: ['dtg', 'uv_print', 'screen_print', 'laser', 'embroidery'],
+  },
 ];
 
 const FONTS = [
-  { label: 'Poppins (Modern Geometric)', value: 'Poppins' },
-  { label: 'Inter (Clean Grotesque)', value: 'Inter' },
-  { label: 'Playfair Display (Editorial Serif)', value: 'Playfair Display' },
-  { label: 'Oswald (Bold Condensed)', value: 'Oswald' },
-  { label: 'Pacifico (Retro Brush Script)', value: 'Pacifico' },
+  { label: 'Poppins', value: 'Poppins' },
+  { label: 'Inter', value: 'Inter' },
+  { label: 'Playfair Display', value: 'Playfair Display' },
+  { label: 'Oswald', value: 'Oswald' },
+  { label: 'Pacifico', value: 'Pacifico' },
+  { label: 'Bebas Neue', value: 'Bebas Neue' },
+  { label: 'Raleway', value: 'Raleway' },
+  { label: 'Montserrat', value: 'Montserrat' },
 ];
 
 const COLOR_PALETTE = [
-  { label: 'Black', hex: '#111827' },
-  { label: 'White', hex: '#ffffff' },
+  { label: 'Jet Black', hex: '#111827' },
+  { label: 'Pure White', hex: '#ffffff' },
   { label: 'Sunset Orange', hex: '#f97316' },
   { label: 'Ocean Blue', hex: '#0284c7' },
   { label: 'Indigo', hex: '#6366f1' },
-  { label: 'Teal Emerald', hex: '#0d9488' },
+  { label: 'Teal', hex: '#0d9488' },
   { label: 'Ruby Red', hex: '#e11d48' },
-  { label: 'Gold Amber', hex: '#d97706' },
+  { label: 'Gold', hex: '#d97706' },
+  { label: 'Lime', hex: '#84cc16' },
+  { label: 'Pink', hex: '#ec4899' },
+  { label: 'Cyan', hex: '#06b6d4' },
+  { label: 'Violet', hex: '#7c3aed' },
 ];
 
-const SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
-
 const EFFECTS = [
-  { id: 'none', label: 'None' },
+  { id: 'none', label: 'Clean' },
   { id: 'shadow', label: 'Shadow' },
   { id: 'outline', label: 'Outline' },
   { id: 'curve', label: 'Curve' },
 ];
 
-export default function CustomizerEditor() {
+const BLEND_MODES = [
+  'normal', 'multiply', 'screen', 'overlay',
+  'darken', 'lighten', 'color-dodge', 'color-burn',
+  'hard-light', 'soft-light', 'difference', 'exclusion',
+  'hue', 'saturation', 'color', 'luminosity',
+];
+
+const TEMPLATE_PRESETS = [
+  { title: 'Good Vibes', category: 'Lifestyle', text: 'GOOD VIBES' },
+  { title: 'Mountain Adventure', category: 'Outdoors', text: 'MOUNTAIN ADVENTURE' },
+  { title: 'Beach Sunset', category: 'Travel', text: 'BEACH SUNSET' },
+  { title: 'Stay Wild', category: 'Illustration', text: 'STAY WILD' },
+  { title: 'Your Brand', category: 'Branding', text: 'YOUR BRAND' },
+  { title: 'Happy Birthday', category: 'Celebration', text: 'HAPPY BIRTHDAY' },
+  { title: 'Made With Love', category: 'Lifestyle', text: 'MADE WITH LOVE' },
+  { title: 'Pet Lover', category: 'Pets', text: 'PET LOVER' },
+  { title: 'Merry & Bright', category: 'Seasonal', text: 'MERRY & BRIGHT' },
+  { title: 'Hello 2026', category: 'Seasonal', text: 'HELLO 2026' },
+];
+
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+// 
+// Helper: product option defaults
+// 
+const getProductOptions = (product) => {
+  if (product?.storeProductId) return product.options || [];
+  return [
+    { name: 'Color', values: product?.colorNames || ['Default'] },
+    { name: 'Size', values: SIZES },
+  ];
+};
+
+const getProductOptionDefaults = (product) =>
+  Object.fromEntries(
+    getProductOptions(product)
+      .filter((o) => o.values?.length)
+      .map((o) => {
+        const first = product?.variants?.[0]?.selectedOptions?.find(
+          (s) => s.name === o.name,
+        )?.value;
+        const def = first && o.values.includes(first)
+          ? first
+          : o.name === 'Size' && o.values.includes('L')
+            ? 'L'
+            : o.values[0];
+        return [o.name, def];
+      }),
+  );
+
+// 
+// Helper: version revision mapper (unchanged from original)
+// 
+const mapRevisionToVersion = (revision) => {
+  const state = revision.canvasState;
+  return {
+    id: revision._id,
+    version: revision.version,
+    productId: revision.productId,
+    versionName: `Version ${revision.version}`,
+    date: (() => {
+      const d = new Date(revision.savedAt || revision.createdAt);
+      return Number.isNaN(d.getTime())
+        ? 'Date unavailable'
+        : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    })(),
+    notes: revision.changeNote || '',
+    thumbnailUrl: revision.thumbnailUrl || null,
+    state: state ? {
+      ...state,
+      customText: state.customText ?? state.text,
+      selectedFont: state.selectedFont ?? state.font,
+      textColor: state.textColor ?? state.color,
+      selectedEffect: state.selectedEffect ?? state.effect,
+      productId: state.productId || revision.productId,
+      productName: state.productName || state.productType ||
+        BUILT_IN_PRODUCTS.find((p) => p.id === revision.productId)?.name || revision.productId,
+    } : undefined,
+  };
+};
+
+// 
+// Sub-components
+// 
+
+/** Minimal range slider with label + value readout */
+function CfsSlider({ label, value, onChange, min = 0, max = 100, step = 1, unit = '' }) {
+  return (
+    <div className="cfs-slider-row">
+      <div className="cfs-slider-label">
+        <span className="cfs-text-sm">{label}</span>
+        <span className="cfs-slider-value">{value}{unit}</span>
+      </div>
+      <input
+        type="range"
+        className="cfs-slider"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </div>
+  );
+}
+
+CfsSlider.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.number.isRequired,
+  onChange: PropTypes.func.isRequired,
+  min: PropTypes.number,
+  max: PropTypes.number,
+  step: PropTypes.number,
+  unit: PropTypes.string,
+};
+
+/** Toast notification */
+function CfsToast({ toasts, onDismiss }) {
+  return (
+    <div className="cfs-toast-container">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`cfs-toast cfs-toast-${t.type || 'info'}`}
+          onClick={() => onDismiss(t.id)}
+        >
+          <div className="cfs-toast-icon">
+            {t.type === 'success' ? '...' : t.type === 'error' ? '' : ''}
+          </div>
+          <div className="cfs-toast-body">
+            {t.title && <div className="cfs-toast-title">{t.title}</div>}
+            <div className="cfs-toast-msg">{t.message}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+CfsToast.propTypes = {
+  toasts: PropTypes.array.isRequired,
+  onDismiss: PropTypes.func.isRequired,
+};
+
+// 
+// Canvas Stage - CSS-only design preview with full image editing controls
+// 
+function CanvasStage({
+  activeProduct,
+  selectedColorIndex,
+  customText,
+  fontFamily,
+  textColor,
+  isBold,
+  isItalic,
+  isUnderline,
+  alignment,
+  effect,
+  imageScale,
+  imageX,
+  imageY,
+  imageRotation,
+  textScale,
+  textX,
+  textY,
+  textRotation,
+  uploadedImageUrl,
+  uploadedFileName,
+  additionalTextLayers,
+  additionalGraphicLayers,
+  // CSS image filter controls
+  imgBrightness,
+  imgContrast,
+  imgSaturation,
+  imgHueRotate,
+  imgOpacity,
+  imgBlendMode,
+  imgDropShadow,
+  showGuides,
+  canvasWidth,
+  canvasHeight,
+}) {
+  const printArea = getProductPrintArea(activeProduct);
+  const productColor = activeProduct.colors[selectedColorIndex];
+  const colorName = activeProduct.colorNames[selectedColorIndex];
+
+  const colorStr = (productColor || '').toLowerCase();
+  const colorNameStr = (colorName || '').toLowerCase();
+  const isDark =
+    colorStr === '#18x181b' || colorStr === '#111827' || colorStr === '#000000' ||
+    colorStr === '#374151' || colorNameStr.includes('black') ||
+    colorNameStr.includes('charcoal') || colorNameStr.includes('dark');
+
+  const isNavy = colorStr === '#1e3a8a' || colorNameStr.includes('navy');
+  const isCrimson = colorStr === '#991b1b' || colorNameStr.includes('crimson') || colorNameStr.includes('red');
+  const isForestGreen = colorStr === '#15803d' || colorNameStr.includes('green');
+
+  // Which mockup image to use
+  const rawId = (activeProduct.id || '').toLowerCase();
+  let baseMockup = activeProduct.image || whiteTshirtImg;
+  if (!activeProduct.storeProductId) {
+    if (rawId === 'tshirt' || rawId.includes('tee') || rawId.includes('shirt') || rawId.includes('longsleeve')) {
+      baseMockup = isDark ? blackTshirtImg : whiteTshirtImg;
+    } else if (rawId === 'hoodie' || rawId.includes('hoodie')) {
+      baseMockup = hoodieImg;
+    } else if (rawId === 'mug' || rawId.includes('mug') || rawId.includes('travel_mug') || rawId.includes('tumbler')) {
+      baseMockup = mugImg;
+    } else if (rawId === 'phone_case') {
+      baseMockup = phoneCaseImg;
+    }
+  }
+
+  // Effective text color on dark garments
+  let effTextColor = textColor;
+  if ((isDark || isNavy || isCrimson || isForestGreen) && (textColor === '#111827' || textColor === '#18x181b')) {
+    effTextColor = '#ffffff';
+  }
+
+  // Text effect CSS
+  let textShadowCss = 'none';
+  let textStrokeCss = 'transparent';
+  if (effect === 'shadow') {
+    textShadowCss = isDark
+      ? '0 3px 8px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.8)'
+      : '0 3px 6px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.2)';
+  } else if (effect === 'outline') {
+    textStrokeCss = isDark ? '#ffffff' : '#111827';
+  }
+
+  const zone = {
+    top: printArea.top * 100,
+    left: printArea.left * 100,
+    width: printArea.width * 100,
+    height: printArea.height * 100,
+  };
+
+  // CSS filter string for uploaded image
+  const shadowPx = imgDropShadow > 0 ? ` drop-shadow(0 ${imgDropShadow}px ${imgDropShadow * 2}px rgba(0,0,0,0.5))` : '';
+  const imgFilter = `brightness(${imgBrightness / 100}) contrast(${imgContrast / 100}) saturate(${imgSaturation / 100}) hue-rotate(${imgHueRotate}deg)${shadowPx}`;
+
+  const displayText = (customText || '').trim();
+  const hasImage = Boolean(uploadedImageUrl || uploadedFileName);
+
+  return (
+    <div
+      className="cfs-canvas-stage"
+      style={{ width: canvasWidth, height: canvasHeight, backgroundColor: '#e5e7eb' }}
+    >
+      {/* Base product image */}
+      <img
+        src={baseMockup}
+        alt={activeProduct.name}
+        style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          objectFit: 'contain', objectPosition: 'center', pointerEvents: 'none',
+        }}
+        loading="lazy"
+      />
+
+      {/* Dynamic color tint overlay */}
+      {!activeProduct.storeProductId && (isNavy || isCrimson) && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundColor: isNavy ? '#1e3a8a' : '#991b1b',
+          mixBlendMode: 'multiply', opacity: 0.88, pointerEvents: 'none',
+          maskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
+          WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
+        }} />
+      )}
+      {!activeProduct.storeProductId && isForestGreen && (
+        <div style={{
+          position: 'absolute', inset: 0, backgroundColor: '#15803d',
+          mixBlendMode: 'multiply', opacity: 0.82, pointerEvents: 'none',
+          maskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
+          WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
+        }} />
+      )}
+
+      {/* Print zone guide */}
+      {showGuides && (
+        <div
+          className="cfs-print-zone"
+          style={{
+            top: `${zone.top}%`, left: `${zone.left}%`,
+            width: `${zone.width}%`, height: `${zone.height}%`,
+          }}
+        />
+      )}
+
+      {/*  Design Print Area  */}
+      <div
+        className="cfs-design-layer"
+        style={{
+          top: `${zone.top}%`, left: `${zone.left}%`,
+          width: `${zone.width}%`, height: `${zone.height}%`,
+          position: 'absolute',
+        }}
+      >
+        {/* Uploaded / background-removed image layer */}
+        {uploadedImageUrl && (
+          <div
+            className="cfs-design-image-wrap"
+            style={{
+              transform: `translate(${imageX}px, ${imageY}px) rotate(${imageRotation}deg) scale(${imageScale / 100})`,
+              mixBlendMode: imgBlendMode,
+              opacity: imgOpacity / 100,
+              filter: imgFilter,
+              position: 'relative',
+              width: '80%',
+              height: '80%',
+            }}
+          >
+            <img
+              src={uploadedImageUrl}
+              alt="Design artwork"
+              className="cfs-design-image"
+              style={{ width: '100%', height: '100%' }}
+            />
+          </div>
+        )}
+
+        {/* Graphic placeholder (template) */}
+        {!uploadedImageUrl && uploadedFileName && uploadedFileName !== 'good_vibes_sun.svg' && (
+          <div
+            style={{
+              transform: `translate(${imageX}px, ${imageY}px) rotate(${imageRotation}deg) scale(${imageScale / 100})`,
+              mixBlendMode: imgBlendMode,
+              opacity: imgOpacity / 100,
+              filter: imgFilter,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <DefaultSvgGraphic name={uploadedFileName} color={effTextColor} size={90} />
+          </div>
+        )}
+
+        {/* Main text layer */}
+        {displayText && (
+          <div
+            className="cfs-design-text"
+            style={{
+              fontFamily: `'${fontFamily}', sans-serif`,
+              fontSize: `${(textScale / 100) * 28}px`,
+              fontWeight: isBold ? 800 : 400,
+              fontStyle: isItalic ? 'italic' : 'normal',
+              textDecoration: isUnderline ? 'underline' : 'none',
+              textAlign: alignment,
+              color: effTextColor,
+              textShadow: textShadowCss,
+              WebkitTextStroke: effect === 'outline' ? `1.2px ${textStrokeCss}` : undefined,
+              transform: `translate(${textX}px, ${textY}px) rotate(${textRotation}deg)${effect === 'curve' ? ' skewX(-4deg)' : ''}`,
+              letterSpacing: effect === 'curve' ? '0.12em' : '0.06em',
+              lineHeight: 1.15,
+              width: '100%',
+              position: 'absolute',
+            }}
+          >
+            {displayText}
+          </div>
+        )}
+
+        {/* Additional graphic layers */}
+        {additionalGraphicLayers
+          .filter((l) => l.visible !== false)
+          .map((layer) => (
+            <div
+              key={layer.id}
+              style={{
+                position: 'absolute',
+                transform: `translate(${layer.x}px, ${layer.y}px) rotate(${layer.rotation}deg) scale(${layer.scale / 100})`,
+              }}
+            >
+              <DefaultSvgGraphic name={layer.name} color={layer.color} size={70} />
+            </div>
+          ))}
+
+        {/* Additional text layers */}
+        {additionalTextLayers
+          .filter((l) => l.visible !== false)
+          .map((layer) => (
+            <div
+              key={layer.id}
+              className="cfs-design-text"
+              style={{
+                fontFamily: `'${layer.font}', sans-serif`,
+                fontSize: `${(layer.scale / 100) * 18}px`,
+                fontWeight: layer.bold ? 800 : 400,
+                color: layer.color,
+                transform: `translate(${layer.x}px, ${layer.y}px) rotate(${layer.rotation}deg)`,
+                width: '100%',
+                textAlign: 'center',
+              }}
+            >
+              {layer.text}
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+CanvasStage.propTypes = {
+  activeProduct: PropTypes.object.isRequired,
+  selectedColorIndex: PropTypes.number.isRequired,
+  customText: PropTypes.string,
+  fontFamily: PropTypes.string,
+  textColor: PropTypes.string,
+  isBold: PropTypes.bool,
+  isItalic: PropTypes.bool,
+  isUnderline: PropTypes.bool,
+  alignment: PropTypes.string,
+  effect: PropTypes.string,
+  imageScale: PropTypes.number,
+  imageX: PropTypes.number,
+  imageY: PropTypes.number,
+  imageRotation: PropTypes.number,
+  textScale: PropTypes.number,
+  textX: PropTypes.number,
+  textY: PropTypes.number,
+  textRotation: PropTypes.number,
+  uploadedImageUrl: PropTypes.string,
+  uploadedFileName: PropTypes.string,
+  additionalTextLayers: PropTypes.array,
+  additionalGraphicLayers: PropTypes.array,
+  imgBrightness: PropTypes.number,
+  imgContrast: PropTypes.number,
+  imgSaturation: PropTypes.number,
+  imgHueRotate: PropTypes.number,
+  imgOpacity: PropTypes.number,
+  imgBlendMode: PropTypes.string,
+  imgDropShadow: PropTypes.number,
+  showGuides: PropTypes.bool,
+  canvasWidth: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  canvasHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+};
+
+/** Inline SVG default graphic for built-in templates */
+function DefaultSvgGraphic({ name, color = '#111827', size = 90 }) {
+  const norm = (name || '').toLowerCase();
+  const s = size;
+
+  if (norm.includes('mountain') || norm.includes('adventure')) {
+    return (
+      <svg width={s} height={s * 0.7} viewBox="0 0 160 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M80 15L125 85H35L80 15Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
+        <path d="M80 32L95 55L85 62L75 52L65 65L80 32Z" fill={color} opacity="0.85" />
+        <line x1="20" y1="92" x2="140" y2="92" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (norm.includes('beach') || norm.includes('sunset')) {
+    return (
+      <svg width={s} height={s * 0.7} viewBox="0 0 140 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="70" cy="50" r="38" stroke={color} strokeWidth="4" />
+        <circle cx="70" cy="38" r="14" fill={color} opacity="0.8" />
+        <path d="M35 55Q70 42 105 55" stroke={color} strokeWidth="4" strokeLinecap="round" />
+        <path d="M38 65Q70 52 102 65" stroke={color} strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (norm.includes('skull') || norm.includes('wild')) {
+    return (
+      <svg width={s} height={s * 0.9} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M60 15C42 15 30 28 30 46C30 58 37 68 45 72V85H75V72C83 68 90 58 90 46C90 28 78 15 60 15Z" stroke={color} strokeWidth="4" />
+        <circle cx="48" cy="48" r="7" fill={color} />
+        <circle cx="72" cy="48" r="7" fill={color} />
+      </svg>
+    );
+  }
+  if (norm.includes('love') || norm.includes('heart')) {
+    return (
+      <svg width={s} height={s * 0.9} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
+        <path d="M60 88 15 47C-7 24 25-4 49 17l11 11 11-11C95-4 127 24 105 47L60 88Z" />
+      </svg>
+    );
+  }
+  if (norm.includes('pet')) {
+    return (
+      <svg width={s} height={s * 0.9} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="60" cy="65" rx="23" ry="20" />
+        <ellipse cx="29" cy="39" rx="10" ry="14" transform="rotate(-25 29 39)" />
+        <ellipse cx="48" cy="23" rx="10" ry="14" transform="rotate(-10 48 23)" />
+        <ellipse cx="72" cy="23" rx="10" ry="14" transform="rotate(10 72 23)" />
+        <ellipse cx="91" cy="39" rx="10" ry="14" transform="rotate(25 91 39)" />
+      </svg>
+    );
+  }
+  if (norm.includes('christmas') || norm.includes('merry')) {
+    return (
+      <svg width={s} height={s} viewBox="0 0 120 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="m60 8-30 38h17L22 72h76L73 46h17L60 8Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
+        <path d="M53 72h14v24H53z" fill={color} />
+      </svg>
+    );
+  }
+  // Default: sun & waves
+  return (
+    <svg width={s} height={s * 0.7} viewBox="0 0 150 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="75" cy="42" r="22" stroke={color} strokeWidth="4" />
+      <circle cx="75" cy="42" r="14" fill={color} opacity="0.85" />
+      <line x1="75" y1="12" x2="75" y2="4" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <line x1="96" y1="21" x2="102" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <line x1="105" y1="42" x2="113" y2="42" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <line x1="45" y1="42" x2="37" y2="42" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <path d="M30 72C42 66 52 76 65 72C78 68 88 78 100 72" stroke={color} strokeWidth="3.5" strokeLinecap="round" />
+      <path d="M36 82C46 78 56 86 68 82C80 78 90 86 102 82" stroke={color} strokeWidth="3" strokeLinecap="round" opacity="0.65" />
+    </svg>
+  );
+}
+
+DefaultSvgGraphic.propTypes = {
+  name: PropTypes.string,
+  color: PropTypes.string,
+  size: PropTypes.number,
+};
+
+// 
+// TOOL IDs
+// -----------------------------------------------------------------------------
+// Pure ASCII SVG Icon Components
+// -----------------------------------------------------------------------------
+function IconTemplates({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M9 21V9" />
+    </svg>
+  );
+}
+
+function IconText({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 7 4 4 20 4 20 7" />
+      <line x1="9" y1="20" x2="15" y2="20" />
+      <line x1="12" y1="4" x2="12" y2="20" />
+    </svg>
+  );
+}
+
+function IconUpload({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function IconAdjust({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  );
+}
+
+function IconElements({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
+function IconLayers({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </svg>
+  );
+}
+
+function IconProducts({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
+  );
+}
+
+function IconSave({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </svg>
+  );
+}
+
+function IconPublish({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+      <path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+      <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+      <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+    </svg>
+  );
+}
+
+function IconAlignLeft({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="21" y1="6" x2="3" y2="6" /><line x1="15" y1="12" x2="3" y2="12" /><line x1="17" y1="18" x2="3" y2="18" />
+    </svg>
+  );
+}
+
+function IconAlignCenter({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="18" y1="6" x2="6" y2="6" /><line x1="21" y1="12" x2="3" y2="12" /><line x1="18" y1="18" x2="6" y2="18" />
+    </svg>
+  );
+}
+
+function IconAlignRight({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="21" y1="6" x2="3" y2="6" /><line x1="21" y1="12" x2="9" y2="12" /><line x1="21" y1="18" x2="7" y2="18" />
+    </svg>
+  );
+}
+
+function IconArrowUp({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
+function IconArrowDown({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function IconArrowLeft({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+function IconArrowRight({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+function IconCenterTarget({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// TOOL IDs
+// -----------------------------------------------------------------------------
+const TOOL = {
+  TEMPLATES: 'templates',
+  TEXT: 'text',
+  UPLOAD: 'upload',
+  IMAGE_ADJUST: 'image_adjust',
+  ELEMENTS: 'elements',
+  LAYERS: 'layers',
+  PRODUCTS: 'products',
+};
+
+const TOOL_BUTTONS = [
+  { id: TOOL.TEMPLATES, label: 'Templates' },
+  { id: TOOL.TEXT, label: 'Text' },
+  { id: TOOL.UPLOAD, label: 'Upload' },
+  { id: TOOL.IMAGE_ADJUST, label: 'Adjust' },
+  { id: TOOL.ELEMENTS, label: 'Elements' },
+  { id: TOOL.LAYERS, label: 'Layers' },
+  { id: TOOL.PRODUCTS, label: 'Products' },
+];
+
+function getToolIcon(id) {
+  switch (id) {
+    case TOOL.TEMPLATES: return <IconTemplates />;
+    case TOOL.TEXT: return <IconText />;
+    case TOOL.UPLOAD: return <IconUpload />;
+    case TOOL.IMAGE_ADJUST: return <IconAdjust />;
+    case TOOL.ELEMENTS: return <IconElements />;
+    case TOOL.LAYERS: return <IconLayers />;
+    case TOOL.PRODUCTS: return <IconProducts />;
+    default: return null;
+  }
+}
+
+// 
+// Main Component
+// 
+export default function CustomizerEditor({ storeProducts = [], catalogError = '' }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const basePath = location?.pathname?.startsWith('/app') ? '/app' : '';
 
-  // Product Selection & Attributes
-  const [selectedProductId, setSelectedProductId] = useState('tshirt');
-  const [selectedColorIndex, setSelectedColorIndex] = useState(0);
-  const [selectedSize, setSelectedSize] = useState('L');
-  const [selectedTechnique, setSelectedTechnique] = useState('dtg');
+  const [customProducts, setCustomProducts] = useState([]);
 
-  // Left Tool Tabs: 0: Templates, 1: Text, 2: Upload, 3: Elements, 4: Shapes, 5: Layers
-  const [activeToolIndex, setActiveToolIndex] = useState(1); // Default to Text
+  // Merge store products + user-created custom products + built-in catalog (all categories accessible)
+  const products = useMemo(() => {
+    const list = [];
+    const seenIds = new Set();
+    const addProd = (p) => {
+      if (p && p.id && !seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        list.push(p);
+      }
+    };
+    if (Array.isArray(storeProducts)) {
+      storeProducts.forEach(addProd);
+    }
+    customProducts.forEach(addProd);
+    BUILT_IN_PRODUCTS.forEach(addProd);
+    return list;
+  }, [storeProducts, customProducts]);
 
-  // Text Customization State
+  //  Product / Category Selection 
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const productCategories = useMemo(
+    () => ['all', ...new Set(products.map((p) => p.category || p.productType || 'Other'))
+      .values()].sort((a, b) => a === 'all' ? -1 : b === 'all' ? 1 : a.localeCompare(b)),
+    [products],
+  );
+
+  const filteredProducts = useMemo(
+    () => products.filter((p) =>
+      selectedCategory === 'all' ||
+      (p.category || p.productType || 'Other') === selectedCategory,
+    ),
+    [products, selectedCategory],
+  );
+
+  const [selectedProductId, setSelectedProductId] = useState(() => products[0]?.id || 'tshirt');
+  const [selectedOptionValues, setSelectedOptionValues] = useState(
+    () => getProductOptionDefaults(products[0] || BUILT_IN_PRODUCTS[0]),
+  );
+  const [variantsByProductId, setVariantsByProductId] = useState({});
+  const [variantsLoadingProductId, setVariantsLoadingProductId] = useState(null);
+  const [variantsLoadError, setVariantsLoadError] = useState('');
+  const variantsRequestIdRef = useRef(0);
+  const variantsRequestsRef = useRef(new Map());
+
+  const activeProduct = useMemo(
+    () => products.find((p) => p.id === selectedProductId) || products[0] || BUILT_IN_PRODUCTS[0],
+    [products, selectedProductId],
+  );
+  const activeProductOptions = useMemo(() => getProductOptions(activeProduct), [activeProduct]);
+  const productVariantMatrix = variantsByProductId[activeProduct.id];
+  const productVariants = Array.isArray(productVariantMatrix)
+    ? productVariantMatrix
+    : activeProduct.variants || [];
+  const colorOption = activeProductOptions.find((o) => /color|colour/i.test(o.name));
+  const sizeOption = activeProductOptions.find((o) => /size/i.test(o.name));
+  const selectedColorName = colorOption
+    ? selectedOptionValues[colorOption.name] || colorOption.values[0]
+    : activeProduct.colorNames?.[0] || 'Default';
+  const selectedColorIndex = Math.max(0, (activeProduct.colorNames || []).indexOf(selectedColorName));
+  const selectedSize = sizeOption
+    ? selectedOptionValues[sizeOption.name] || sizeOption.values[0]
+    : 'Default';
+  const otherProductOptions = activeProductOptions.filter(
+    (o) => o.name !== colorOption?.name && o.name !== sizeOption?.name,
+  );
+  const activeVariant = productVariants.find((v) =>
+    activeProductOptions.every((o) =>
+      v.selectedOptions?.some(
+        (s) => s.name === o.name && s.value === (selectedOptionValues[o.name] || o.values[0]),
+      ),
+    ),
+  );
+  const variantMatrixLoaded = Array.isArray(productVariantMatrix);
+  const variantSelectionValid =
+    !activeProduct.storeProductId || (variantMatrixLoaded && Boolean(activeVariant));
+  const activeProductImage = activeVariant?.image || activeProduct.image;
+  const activePrintArea = getProductPrintArea(activeProduct);
+
+  //  Custom product state (for __custom__ entry) 
+  const [customProductName, setCustomProductName] = useState('');
+  const [customProductUrl, setCustomProductUrl] = useState('');
+
+  //  Tool / Inspector 
+  const [activeTool, setActiveTool] = useState(TOOL.TEXT);
+  const [showGuides, setShowGuides] = useState(false);
+
+  //  Text State 
   const [customText, setCustomText] = useState('Good Vibes');
   const [selectedFont, setSelectedFont] = useState('Poppins');
   const [textColor, setTextColor] = useState('#111827');
@@ -151,134 +1071,268 @@ export default function CustomizerEditor() {
   const [textY, setTextY] = useState(32);
   const [textRotation, setTextRotation] = useState(0);
 
-  // Artwork & Image Customization State
+  //  Image / Artwork State 
   const [uploadedFileName, setUploadedFileName] = useState('good_vibes_sun.svg');
   const [uploadedFileSize, setUploadedFileSize] = useState('1.8 MB');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
+  const [backgroundRemovalResult, setBackgroundRemovalResult] = useState(null);
+  const [backgroundRemovalLoading, setBackgroundRemovalLoading] = useState(false);
+  const [backgroundRemovalError, setBackgroundRemovalError] = useState('');
   const [imageScale, setImageScale] = useState(90);
   const [imageX, setImageX] = useState(0);
   const [imageY, setImageY] = useState(-24);
   const [imageRotation, setImageRotation] = useState(0);
 
-  const handleDrop = useCallback((_droppedFiles, acceptedFiles) => {
-    const file = acceptedFiles[0] || _droppedFiles[0];
-    if (!file) return;
-    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-    setUploadedFileName(file.name);
-    setUploadedFileSize(`${sizeMB} MB`);
-    setUploadedFile(file);
-    // Create a preview URL for image files
-    if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setUploadedImageUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev); // free previous blob
-        return url;
-      });
-      setImageY(-20);
-      setImageScale(90);
-      setImageX(0);
-      setImageRotation(0);
-    }
-  }, []);
+  //  CSS Image Filter Controls 
+  const [imgBrightness, setImgBrightness] = useState(100);
+  const [imgContrast, setImgContrast] = useState(100);
+  const [imgSaturation, setImgSaturation] = useState(100);
+  const [imgHueRotate, setImgHueRotate] = useState(0);
+  const [imgOpacity, setImgOpacity] = useState(100);
+  const [imgBlendMode, setImgBlendMode] = useState('normal');
+  const [imgDropShadow, setImgDropShadow] = useState(0);
 
-  const handleRemoveImage = useCallback(() => {
-    if (uploadedImageUrl) {
-      URL.revokeObjectURL(uploadedImageUrl);
-    }
-    setUploadedImageUrl(null);
-    setUploadedFileName(null);
-    setUploadedFile(null);
-    setTextY(0);
-  }, [uploadedImageUrl]);
+  //  Layers 
+  const [additionalTextLayers, setAdditionalTextLayers] = useState([]);
+  const [additionalGraphicLayers, setAdditionalGraphicLayers] = useState([]);
 
-  const handleResetImage = useCallback(() => {
-    setImageScale(90);
-    setImageX(0);
-    setImageY(customText ? -24 : 0);
-    setImageRotation(0);
-  }, [customText]);
-
-  const handleResetText = useCallback(() => {
-    setTextScale(85);
-    setTextX(0);
-    setTextY((uploadedImageUrl || uploadedFileName) ? 32 : 0);
-    setTextRotation(0);
-  }, [uploadedImageUrl, uploadedFileName]);
-
-  const nudgeImage = (dx, dy) => {
-    setImageX((x) => Math.max(-140, Math.min(140, x + dx)));
-    setImageY((y) => Math.max(-140, Math.min(140, y + dy)));
-  };
-
-  const nudgeText = (dx, dy) => {
-    setTextX((x) => Math.max(-140, Math.min(140, x + dx)));
-    setTextY((y) => Math.max(-140, Math.min(140, y + dy)));
-  };
-
-  // Modals & Banners
-  const [validatorOpen, setValidatorOpen] = useState(false);
-  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
-  const [versionCompareOpen, setVersionCompareOpen] = useState(false);
-  const [bannerAlert, setBannerAlert] = useState(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
-
-  // Undo/Redo History
+  //  Undo / Redo 
   const [history, setHistory] = useState([
     { text: 'Good Vibes', font: 'Poppins', color: '#111827', effect: 'curve' },
   ]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
+  //  Version History / Saving 
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [versionCompareOpen, setVersionCompareOpen] = useState(false);
+  const [versionHistory, setVersionHistory] = useState([]);
+  const [versionHistoryLoading, setVersionHistoryLoading] = useState(false);
+  const [versionHistoryError, setVersionHistoryError] = useState('');
+  const designRecordsRef = useRef(new Map());
+  const [historyModalProductId, setHistoryModalProductId] = useState(selectedProductId);
+  const historyModalProductIdRef = useRef(selectedProductId);
+  const historyRequestIdRef = useRef(0);
+  historyModalProductIdRef.current = historyModalProductId;
+
+  //  Publish 
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [collections, setCollections] = useState([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [collectionsError, setCollectionsError] = useState('');
+  const [collectionChoice, setCollectionChoice] = useState({ type: 'none' });
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [collectionNameError, setCollectionNameError] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  //  Toast system 
+  const [toasts, setToasts] = useState([]);
+  const addToast = useCallback((type, title, message) => {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, type, title, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }, []);
+  const dismissToast = useCallback((id) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
+
+  // 
+  // Product Selection
+  // 
   const handleProductSelect = useCallback((prodId) => {
     setSelectedProductId(prodId);
-    setSelectedColorIndex(0);
-    const prod = PRODUCTS.find((p) => p.id === prodId);
-    if (prod && !prod.compatibleTechniques.includes(selectedTechnique)) {
-      setSelectedTechnique(prod.compatibleTechniques[0]);
-    }
-  }, [selectedTechnique]);
+    const product = products.find((p) => p.id === prodId);
+    setSelectedOptionValues(getProductOptionDefaults(product));
+    setVersionHistory([]);
+    setVersionHistoryError('');
+    if (product) setSelectedCategory(product.category || product.productType || 'Other');
+  }, [products]);
 
-  // Handle URL query template or product/category loading
+  const loadProductVariants = useCallback((productId) => {
+    const pending = variantsRequestsRef.current.get(productId);
+    if (pending) return pending;
+    const reqId = ++variantsRequestIdRef.current;
+    setVariantsLoadingProductId(productId);
+    setVariantsLoadError('');
+    const req = (async () => {
+      try {
+        const res = await api.shopify.variants(productId);
+        const data = res?.data;
+        if (res?.success !== true || data?.productId !== productId || !Array.isArray(data.variants) || !data.variants.length) {
+          throw new Error(res?.message || 'Shopify did not return a product variant matrix.');
+        }
+        setVariantsByProductId((cur) => ({ ...cur, [productId]: data.variants }));
+        return data.variants;
+      } catch (err) {
+        if (reqId === variantsRequestIdRef.current) {
+          setVariantsLoadError(err?.message || 'Unable to load Shopify product variants.');
+        }
+        throw err;
+      } finally {
+        if (reqId === variantsRequestIdRef.current) setVariantsLoadingProductId(null);
+      }
+    })();
+    variantsRequestsRef.current.set(productId, req);
+    return req.finally(() => {
+      if (variantsRequestsRef.current.get(productId) === req) {
+        variantsRequestsRef.current.delete(productId);
+      }
+    });
+  }, []);
+
   useEffect(() => {
-    const templateQuery = searchParams.get('template');
-    if (templateQuery) {
-      setCustomText(decodeURIComponent(templateQuery));
+    if (!activeProduct.storeProductId || Array.isArray(variantsByProductId[activeProduct.id])) return;
+    loadProductVariants(activeProduct.id).catch((e) => {
+      console.error('[CustomizerEditor] Unable to load product variant matrix:', e);
+    });
+  }, [activeProduct.id, activeProduct.storeProductId, variantsByProductId, loadProductVariants]);
+
+  const handleProductOptionChange = useCallback((name, value) => {
+    setSelectedOptionValues((cur) => ({ ...cur, [name]: value }));
+  }, []);
+
+  // 
+  // Image drop handler
+  // 
+  const dropzoneRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const processFile = useCallback((file) => {
+    if (!file) return;
+    setBackgroundRemovalError('');
+    setBackgroundRemovalResult((cur) => {
+      if (cur?.url) URL.revokeObjectURL(cur.url);
+      return null;
+    });
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    setUploadedFileName(file.name);
+    setUploadedFileSize(`${sizeMB} MB`);
+    setUploadedFile(file);
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      setUploadedImageUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
+      setImageY(-20); setImageScale(90); setImageX(0); setImageRotation(0);
+      // Reset filters on new upload
+      setImgBrightness(100); setImgContrast(100); setImgSaturation(100);
+      setImgHueRotate(0); setImgOpacity(100); setImgBlendMode('normal'); setImgDropShadow(0);
+    } else {
+      setUploadedImageUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     }
-    const productQuery = searchParams.get('product') || searchParams.get('category');
-    if (productQuery) {
-      const q = decodeURIComponent(productQuery).toLowerCase();
-      if (q.includes('hoodie')) handleProductSelect('hoodie');
-      else if (q.includes('mug') || q.includes('drinkware')) handleProductSelect('mug');
-      else if (q.includes('phone') || q.includes('case')) handleProductSelect('phone_case');
-      else if (q.includes('tshirt') || q.includes('shirt') || q.includes('t-shirt')) handleProductSelect('tshirt');
+  }, []);
+
+  const handleDragOver = useCallback((e) => { e.preventDefault(); setIsDragActive(true); }, []);
+  const handleDragLeave = useCallback(() => setIsDragActive(false), []);
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragActive(false);
+    processFile(e.dataTransfer.files[0]);
+  }, [processFile]);
+  const handleFileInput = useCallback((e) => processFile(e.target.files[0]), [processFile]);
+
+  const handleBackgroundRemoval = useCallback(async () => {
+    if (!uploadedFile || !uploadedImageUrl) {
+      setBackgroundRemovalError('Upload a PNG, JPEG, or WebP image first.');
+      return;
     }
-  }, [searchParams, handleProductSelect]);
+    setBackgroundRemovalLoading(true);
+    setBackgroundRemovalError('');
+    try {
+      const outFile = await removeImageBackground(uploadedFile);
+      const previewUrl = URL.createObjectURL(outFile);
+      setBackgroundRemovalResult((prev) => {
+        if (prev?.url) URL.revokeObjectURL(prev.url);
+        return { file: outFile, url: previewUrl };
+      });
+    } catch (err) {
+      setBackgroundRemovalError(err?.message || 'Background removal failed.');
+    } finally {
+      setBackgroundRemovalLoading(false);
+    }
+  }, [uploadedFile, uploadedImageUrl]);
 
-  const activeProduct = useMemo(
-    () => PRODUCTS.find((p) => p.id === selectedProductId) || PRODUCTS[0],
-    [selectedProductId]
-  );
+  const handleAcceptBgRemoval = useCallback(() => {
+    if (!backgroundRemovalResult) return;
+    if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
+    setUploadedImageUrl(backgroundRemovalResult.url);
+    setUploadedFile(backgroundRemovalResult.file);
+    setUploadedFileName(backgroundRemovalResult.file.name);
+    setUploadedFileSize(`${(backgroundRemovalResult.file.size / (1024 * 1024)).toFixed(1)} MB`);
+    setBackgroundRemovalResult(null);
+    addToast('success', 'Background Removed', 'Transparent artwork applied to canvas.');
+  }, [backgroundRemovalResult, uploadedImageUrl, addToast]);
 
-  // Check physical feasibility
-  const isFeasible = useMemo(() => {
-    return activeProduct.compatibleTechniques.includes(selectedTechnique);
-  }, [activeProduct, selectedTechnique]);
+  const handleDiscardBgRemoval = useCallback(() => {
+    if (backgroundRemovalResult?.url) URL.revokeObjectURL(backgroundRemovalResult.url);
+    setBackgroundRemovalResult(null);
+  }, [backgroundRemovalResult]);
 
-  const handleTextChange = useCallback(
-    (newVal) => {
-      setCustomText(newVal);
-      const snapshot = {
-        text: newVal,
-        font: selectedFont,
-        color: textColor,
-        effect: selectedEffect,
-      };
-      setHistory((prev) => [...prev.slice(0, historyIndex + 1), snapshot]);
-      setHistoryIndex((prev) => prev + 1);
-    },
-    [selectedFont, textColor, selectedEffect, historyIndex]
-  );
+  const handleRemoveImage = useCallback(() => {
+    if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
+    setUploadedImageUrl(null);
+    setUploadedFileName(null);
+    setUploadedFile(null);
+    handleDiscardBgRemoval();
+    setTextY(0);
+  }, [uploadedImageUrl, handleDiscardBgRemoval]);
+
+  // 
+  // Layer management
+  // 
+  const LAYER_LIMIT = 12;
+
+  const addTextLayer = useCallback(() => {
+    if (additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT) {
+      addToast('error', 'Layer limit', 'Max 12 layers per design.');
+      return;
+    }
+    const id = `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setAdditionalTextLayers((ls) => [
+      ...ls,
+      { id, name: `Text ${ls.length + 1}`, text: 'Add text', font: selectedFont, color: textColor, scale: 100, x: 0, y: 0, rotation: 0, bold: true, visible: true },
+    ]);
+    setActiveTool(TOOL.LAYERS);
+  }, [additionalTextLayers.length, additionalGraphicLayers.length, selectedFont, textColor, addToast]);
+
+  const addGraphicLayer = useCallback((name = 'Good Vibes') => {
+    if (additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT) {
+      addToast('error', 'Layer limit', 'Max 12 layers per design.');
+      return;
+    }
+    setAdditionalGraphicLayers((ls) => [
+      ...ls,
+      { id: `graphic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, color: textColor, scale: 55, x: 0, y: 0, rotation: 0, visible: true },
+    ]);
+    setActiveTool(TOOL.LAYERS);
+  }, [additionalTextLayers.length, additionalGraphicLayers.length, textColor, addToast]);
+
+  const updateTextLayer = useCallback((id, updates) => {
+    setAdditionalTextLayers((ls) => ls.map((l) => l.id === id ? { ...l, ...updates } : l));
+  }, []);
+
+  const updateGraphicLayer = useCallback((id, updates) => {
+    setAdditionalGraphicLayers((ls) => ls.map((l) => l.id === id ? { ...l, ...updates } : l));
+  }, []);
+
+  const moveLayer = useCallback((list, setList, id, dir) => {
+    setList((ls) => {
+      const idx = ls.findIndex((l) => l.id === id);
+      const target = idx + dir;
+      if (idx < 0 || target < 0 || target >= ls.length) return ls;
+      const next = [...ls];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  }, []);
+
+  // 
+  // Text change + undo/redo
+  // 
+  const handleTextChange = useCallback((val) => {
+    setCustomText(val);
+    const snap = { text: val, font: selectedFont, color: textColor, effect: selectedEffect };
+    setHistory((prev) => [...prev.slice(0, historyIndex + 1), snap]);
+    setHistoryIndex((prev) => prev + 1);
+  }, [selectedFont, textColor, selectedEffect, historyIndex]);
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
@@ -302,834 +1356,1252 @@ export default function CustomizerEditor() {
     }
   }, [history, historyIndex]);
 
-  const handleSaveDesign = useCallback(async () => {
+  // Reset helpers
+  const handleResetText = useCallback(() => { setTextScale(85); setTextX(0); setTextY(uploadedImageUrl ? 32 : 0); setTextRotation(0); }, [uploadedImageUrl]);
+  const handleResetImage = useCallback(() => { setImageScale(90); setImageX(0); setImageY(customText ? -24 : 0); setImageRotation(0); }, [customText]);
+  const handleResetFilters = useCallback(() => {
+    setImgBrightness(100); setImgContrast(100); setImgSaturation(100);
+    setImgHueRotate(0); setImgOpacity(100); setImgBlendMode('normal'); setImgDropShadow(0);
+  }, []);
+  const nudgeImage = (dx, dy) => {
+    setImageX((x) => Math.max(-140, Math.min(140, x + dx)));
+    setImageY((y) => Math.max(-140, Math.min(140, y + dy)));
+  };
+  const nudgeText = (dx, dy) => {
+    setTextX((x) => Math.max(-140, Math.min(140, x + dx)));
+    setTextY((y) => Math.max(-140, Math.min(140, y + dy)));
+  };
+
+  // 
+  // Publish & Collections
+  // 
+  const loadShopifyCollections = useCallback(async () => {
+    setCollectionsLoading(true);
+    setCollectionsError('');
+    try {
+      const fn = api.shopify?.collections;
+      if (typeof fn !== 'function') throw new Error('Shopify collection loading unavailable.');
+      const result = await fn();
+      const available = result?.data?.collections;
+      if (!Array.isArray(available)) throw new Error('Collections response invalid.');
+      setCollections(available);
+    } catch (err) {
+      setCollectionsError(err?.message || 'Unable to load Shopify collections.');
+    } finally {
+      setCollectionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (publishOpen) loadShopifyCollections(); }, [publishOpen, loadShopifyCollections]);
+
+  const handleOpenPublish = useCallback(() => {
+    if (!variantSelectionValid) {
+      addToast('error', 'Unavailable combination', 'Select a valid option combination before publishing.');
+      return;
+    }
+    setCollectionChoice({ type: 'none' });
+    setNewCollectionName('');
+    setCollectionNameError('');
+    setPublishOpen(true);
+  }, [variantSelectionValid, addToast]);
+
+  const handleCollectionChoiceChange = useCallback((value) => {
+    if (value === 'none' || value === 'new') setCollectionChoice({ type: value });
+    else setCollectionChoice({ type: 'existing', id: value });
+    setCollectionNameError('');
+  }, []);
+
+  const handlePublishToStorefront = useCallback(async () => {
+    if (!variantSelectionValid) {
+      setCollectionNameError('Select a valid product option combination first.');
+      return;
+    }
+    if (collectionChoice.type === 'new' && (newCollectionName.trim().length < 2 || newCollectionName.trim().length > 100)) {
+      setCollectionNameError('Collection name must be 2-100 characters.');
+      return;
+    }
+    setIsPublishing(true);
+    setCollectionNameError('');
+    try {
+      const title = `${activeProduct.name}${customText.trim() ? ` - ${customText.trim()}` : ''}`.slice(0, 255);
+      const fn = api.shopify?.publish;
+      if (typeof fn !== 'function') throw new Error('Shopify publishing unavailable.');
+      const artwork = await createProductArtwork({
+        mockupUrl: !activeProduct.storeProductId && selectedProductId === 'tshirt' && [1, 4].includes(selectedColorIndex)
+          ? activeProduct.darkImage : activeProductImage,
+        productId: selectedProductId,
+        productColor: activeProduct.colors[selectedColorIndex],
+        printArea: activePrintArea,
+        uploadedImageUrl,
+        uploadedFileName,
+        customText: customText.trim(),
+        selectedFont, textColor, isBold, isItalic, isUnderline,
+        alignment, selectedEffect, textScale, textX, textY, textRotation,
+        imageScale, imageX, imageY, imageRotation,
+        additionalTextLayers, additionalGraphicLayers,
+      });
+      const result = await fn({
+        title,
+        sourceProductId: activeProduct.storeProductId || '',
+        productType: activeProduct.productType || activeProduct.category || activeProduct.name,
+        price: activeVariant?.price || activeProduct.price,
+        color: selectedColorName,
+        size: selectedSize,
+        options: activeProductOptions.map((o) => ({
+          name: o.name, value: selectedOptionValues[o.name] || o.values[0],
+        })),
+        technique: activeProduct.compatibleTechniques?.[0] || 'dtg',
+        customText: customText.trim(),
+        artwork,
+        collection: collectionChoice.type === 'existing'
+          ? collectionChoice
+          : collectionChoice.type === 'new'
+            ? { type: 'new', title: newCollectionName.trim() }
+            : { type: 'none' },
+      });
+      if (result?.success === false) throw new Error(result.message || 'Unable to publish.');
+      setPublishOpen(false);
+      addToast('success', 'Published!', result?.message || 'Product is live on your Online Store.');
+    } catch (err) {
+      const partial = err?.data?.data?.product ?? null;
+      if (partial?.id) setPublishOpen(false);
+      addToast('error', partial ? 'Partially Published' : 'Publish Failed',
+        partial
+          ? `${partial.title || 'Product'} created but publishing didn't finish. Check Shopify.`
+          : err?.message || 'Unable to publish this product.');
+    } finally {
+      setIsPublishing(false);
+    }
+  }, [
+    variantSelectionValid, collectionChoice, newCollectionName, activeProduct,
+    activeVariant, activeProductImage, activePrintArea, activeProductOptions,
+    alignment, customText, imageRotation, imageScale, imageX, imageY,
+    isBold, isItalic, isUnderline, selectedEffect, selectedFont,
+    selectedColorIndex, selectedProductId, textColor, textRotation, textScale,
+    textX, textY, selectedSize, selectedColorName, selectedOptionValues,
+    uploadedFileName, uploadedImageUrl, additionalTextLayers, additionalGraphicLayers, addToast,
+  ]);
+
+  // 
+  // Version History (unchanged API calls)
+  // 
+  const getProductDesign = useCallback(async (productId, productVariantId = null, force = false) => {
+    const key = `${productId}:${productVariantId || ''}`;
+    const cached = designRecordsRef.current.get(key);
+    if (cached && !force) return cached;
+    const result = await api.designs.list({ productId, productVariantId: productVariantId || '', limit: 100, page: 1 });
+    const designs = result.data?.designs;
+    if (!Array.isArray(designs)) throw new Error('Design history response invalid.');
+    const design = designs.find((d) => String(d.productVariantId || '') === String(productVariantId || '')) || null;
+    if (design) designRecordsRef.current.set(key, design);
+    else designRecordsRef.current.delete(key);
+    return design;
+  }, []);
+
+  const refreshVersionHistory = useCallback(async (productId, productVariantId = null, designRecord = null) => {
+    const reqId = ++historyRequestIdRef.current;
+    setVersionHistoryLoading(true);
+    setVersionHistoryError('');
+    try {
+      const design = designRecord || await getProductDesign(productId, productVariantId, true);
+      if (!design) {
+        if (historyModalProductIdRef.current === productId && reqId === historyRequestIdRef.current) setVersionHistory([]);
+        return [];
+      }
+      const result = await api.designs.revisions(design.id || design._id, { productId, productVariantId: productVariantId || '' });
+      const revisions = result.data?.revisions;
+      if (!Array.isArray(revisions)) throw new Error('Version history response invalid.');
+      const hist = revisions
+        .filter((r) => r.productId === productId && String(r.productVariantId || '') === String(productVariantId || ''))
+        .sort((a, b) => a.version - b.version)
+        .map(mapRevisionToVersion);
+      if (historyModalProductIdRef.current === productId && reqId === historyRequestIdRef.current) setVersionHistory(hist);
+      return hist;
+    } catch (err) {
+      if (historyModalProductIdRef.current === productId && reqId === historyRequestIdRef.current) {
+        setVersionHistory([]);
+        setVersionHistoryError(err.message || 'Unable to load version history.');
+      }
+      throw err;
+    } finally {
+      if (historyModalProductIdRef.current === productId && reqId === historyRequestIdRef.current) setVersionHistoryLoading(false);
+    }
+  }, [getProductDesign]);
+
+  const loadVersionDetail = useCallback(async (version) => {
+    const productId = version.productId;
+    const design = await getProductDesign(productId, null, true);
+    if (!design) throw new Error('Design no longer available.');
+    const result = await api.designs.revision(design.id || design._id, version.version, { productId, productVariantId: '' });
+    const revision = result.data?.revision;
+    if (!revision || revision.productId !== productId) throw new Error('Version belongs to a different product.');
+    return mapRevisionToVersion(revision);
+  }, [getProductDesign]);
+
+  useEffect(() => {
+    if (!versionCompareOpen) return;
+    setHistoryModalProductId(selectedProductId);
+    historyModalProductIdRef.current = selectedProductId;
+    refreshVersionHistory(selectedProductId).catch((e) => console.error('[Studio] version history:', e));
+  }, [versionCompareOpen, selectedProductId, refreshVersionHistory]);
+
+  const handleModalProductChange = useCallback((productId) => {
+    setHistoryModalProductId(productId);
+    historyModalProductIdRef.current = productId;
+    setVersionHistory([]);
+    setVersionHistoryError('');
+    refreshVersionHistory(productId).catch((e) => console.error('[Studio] modal product change:', e));
+  }, [refreshVersionHistory]);
+
+  const persistVersionSnapshot = useCallback(async (note) => {
+    const productId = activeProduct.id;
+    const productVariantId = activeVariant?.id || null;
+    const canvasState = {
+      customText, selectedFont, textColor, selectedEffect,
+      textScale, textX, textY, textRotation,
+      additionalTextLayers, additionalGraphicLayers,
+      imageScale, imageX, imageY, imageRotation,
+      uploadedFileName, productId, productName: activeProduct.name,
+      productColor: activeProduct.colors[selectedColorIndex],
+      productColorName: activeProduct.colorNames[selectedColorIndex],
+      colorIndex: selectedColorIndex, size: selectedSize,
+      selectedOptions: selectedOptionValues,
+    };
+    const design = await getProductDesign(productId, productVariantId);
+    const payload = { productId, productVariantId, canvasState, changeNote: note };
+    const result = design
+      ? await api.designs.update(design.id || design._id, { ...payload, expectedVersion: design.version })
+      : await api.designs.create(payload);
+    const saved = result.data?.design;
+    if (!saved?.id && !saved?._id) throw new Error('Server did not return the saved design.');
+    const persisted = { ...saved, id: saved.id || saved._id, productId, productVariantId };
+    designRecordsRef.current.set(`${productId}:${productVariantId || ''}`, persisted);
+    return { canvasState, persistedDesign: persisted };
+  }, [
+    activeProduct, activeVariant, customText, selectedFont, textColor, selectedEffect,
+    textScale, textX, textY, textRotation, additionalTextLayers, additionalGraphicLayers,
+    imageScale, imageX, imageY, imageRotation, uploadedFileName, selectedColorIndex,
+    selectedSize, selectedOptionValues, getProductDesign,
+  ]);
+
+  const handleCreateSnapshot = useCallback(async (note) => {
+    const trimmed = (note || '').trim();
+    if (!trimmed || trimmed.length < 2) { addToast('error', 'Validation', 'Version note needs at least 2 characters.'); return false; }
+    if (trimmed.length > 120) { addToast('error', 'Validation', 'Version note max 120 characters.'); return false; }
     setIsSaving(true);
     try {
-      await api.library.save({
-        name: customText || activeProduct.name,
-        shopifyProductId: activeProduct.id,
-        canvasState: {
-          text: customText,
-          font: selectedFont,
-          color: textColor,
-          effect: selectedEffect,
-          textScale,
-          textX,
-          textY,
-          textRotation,
-          imageScale,
-          imageX,
-          imageY,
-          imageRotation,
-          uploadedFileName,
-          size: selectedSize,
-          productType: activeProduct.name,
-        },
-        tags: [activeProduct.name, selectedFont],
-      });
-      setSavedSuccess(true);
-      setBannerAlert({
-        tone: 'success',
-        title: 'Design Saved to Library',
-        message: `"${customText}" has been saved to your Reusable Design Library in database.`,
-      });
+      await persistVersionSnapshot(trimmed);
+      setHistoryModalProductId(activeProduct.id);
+      historyModalProductIdRef.current = activeProduct.id;
+      await refreshVersionHistory(activeProduct.id, null).catch(() => {});
+      addToast('success', 'Snapshot Saved', `Version "${trimmed}" saved.`);
+      return true;
     } catch (err) {
-      setBannerAlert({
-        tone: 'success',
-        title: 'Design Saved',
-        message: `Design "${customText}" has been saved.`,
-      });
+      setVersionHistoryError(err.message || 'Unable to save version.');
+      addToast('error', 'Snapshot Failed', err.message || 'Unable to save.');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  }, [persistVersionSnapshot, refreshVersionHistory, activeProduct, addToast]);
+
+  const handleRestoreVersion = useCallback((version) => {
+    const s = version.state;
+    if (!s) return;
+    if (s.customText !== undefined) setCustomText(s.customText);
+    if (s.selectedFont) setSelectedFont(s.selectedFont);
+    if (s.textColor) setTextColor(s.textColor);
+    if (s.selectedEffect) setSelectedEffect(s.selectedEffect);
+    if (s.textScale !== undefined) setTextScale(s.textScale);
+    if (s.textX !== undefined) setTextX(s.textX);
+    if (s.textY !== undefined) setTextY(s.textY);
+    if (s.textRotation !== undefined) setTextRotation(s.textRotation);
+    if (Array.isArray(s.additionalTextLayers)) setAdditionalTextLayers(s.additionalTextLayers);
+    if (Array.isArray(s.additionalGraphicLayers)) setAdditionalGraphicLayers(s.additionalGraphicLayers);
+    if (s.imageScale !== undefined) setImageScale(s.imageScale);
+    if (s.imageX !== undefined) setImageX(s.imageX);
+    if (s.imageY !== undefined) setImageY(s.imageY);
+    if (s.imageRotation !== undefined) setImageRotation(s.imageRotation);
+    if (s.productId) handleProductSelect(s.productId);
+    if (s.selectedOptions) setSelectedOptionValues((cur) => ({ ...cur, ...s.selectedOptions }));
+    setVersionCompareOpen(false);
+    addToast('success', 'Version Restored', `Restored to "${version.versionName}".`);
+  }, [handleProductSelect, addToast]);
+
+  // 
+  // Save Design
+  // 
+  const handleSaveDesign = useCallback(async () => {
+    setIsSaving(true);
+    setSavedSuccess(false);
+    try {
+      const dateStr = new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const note = `Saved - "${customText || activeProduct.name}" on ${dateStr}`;
+      const canvasStateForLibrary = {
+        text: customText, customText, font: selectedFont, color: textColor, effect: selectedEffect,
+        textScale, textX, textY, textRotation, additionalTextLayers, additionalGraphicLayers,
+        imageScale, imageX, imageY, imageRotation, uploadedFileName, uploadedImageUrl,
+        size: selectedSize, selectedOptions: selectedOptionValues,
+        productType: activeProduct.name, productColor: activeProduct.colors[selectedColorIndex],
+        productColorName: activeProduct.colorNames[selectedColorIndex],
+        productId: activeProduct.id, colorIndex: selectedColorIndex,
+      };
+      const designName = (customText || activeProduct.name).trim();
+      const localId = 'design_' + Date.now();
+      const localRecord = {
+        id: localId, _id: localId, name: designName,
+        shopifyProductId: activeProduct.id, canvasState: canvasStateForLibrary,
+        tags: [activeProduct.name, selectedFont],
+        thumbnailUrl: uploadedImageUrl || activeProduct.image,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      };
+      try {
+        const stored = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+        const updated = [localRecord, ...stored.filter((d) => !(d.name === designName && d.shopifyProductId === activeProduct.id))];
+        localStorage.setItem('customforge_saved_designs', JSON.stringify(updated));
+      } catch (e) { console.warn('localStorage write failed:', e); }
+
+      await persistVersionSnapshot(note);
+      let libErr = null;
+      try {
+        await api.library.save({
+          id: localId, name: designName, shopifyProductId: activeProduct.id,
+          canvasState: canvasStateForLibrary, tags: [activeProduct.name, selectedFont],
+          thumbnailUrl: uploadedImageUrl || activeProduct.image,
+        });
+      } catch (e) { libErr = e; }
+
+      setSavedSuccess(true);
+      addToast(
+        libErr ? 'info' : 'success',
+        libErr ? 'Version Saved (library sync failed)' : 'Design Saved',
+        libErr
+          ? `Version saved but library update failed: ${libErr.message}`
+          : `"${designName}" saved. Access it from My Saved Designs.`,
+      );
+    } catch (err) {
+      addToast('error', 'Save Failed', err.message || 'Unable to persist this design.');
     } finally {
       setIsSaving(false);
     }
   }, [
-    customText,
-    activeProduct,
-    selectedFont,
-    textColor,
-    selectedEffect,
-    selectedSize,
-    textScale,
-    textX,
-    textY,
-    textRotation,
-    imageScale,
-    imageX,
-    imageY,
-    imageRotation,
-    uploadedFileName,
+    customText, activeProduct, selectedFont, textColor, selectedEffect, selectedSize,
+    textScale, textX, textY, textRotation, additionalTextLayers, additionalGraphicLayers,
+    imageScale, imageX, imageY, imageRotation, uploadedFileName, uploadedImageUrl,
+    selectedColorIndex, selectedOptionValues, persistVersionSnapshot, addToast,
   ]);
 
+  // 
+  // URL param loading (template / product / libraryItem) - unchanged logic
+  // 
+  useEffect(() => {
+    const tpl = searchParams.get('template');
+    if (tpl) setCustomText(decodeURIComponent(tpl));
+    const prod = searchParams.get('product') || searchParams.get('category');
+    if (prod) {
+      const q = decodeURIComponent(prod).toLowerCase();
+      const match = products.find((p) => p.id === q || `${p.name} ${p.category} ${p.productType}`.toLowerCase().includes(q));
+      if (match) handleProductSelect(match.id);
+      else if (q.includes('hoodie')) handleProductSelect('hoodie');
+      else if (q.includes('mug')) handleProductSelect('mug');
+      else if (q.includes('phone')) handleProductSelect('phone_case');
+      else if (q.includes('tshirt') || q.includes('shirt')) handleProductSelect('tshirt');
+    }
+    const libId = searchParams.get('libraryItem') || searchParams.get('designId');
+    if (libId) {
+      const applyState = (state, dName) => {
+        if (!state) return;
+        if (state.productId) handleProductSelect(state.productId);
+        if (state.text !== undefined) setCustomText(state.text);
+        else if (state.customText !== undefined) setCustomText(state.customText);
+        else if (dName) setCustomText(dName);
+        if (state.font || state.selectedFont) setSelectedFont(state.font || state.selectedFont);
+        if (state.color || state.textColor) setTextColor(state.color || state.textColor);
+        if (state.effect || state.selectedEffect) setSelectedEffect(state.effect || state.selectedEffect);
+        if (state.textScale !== undefined) setTextScale(state.textScale);
+        if (state.textX !== undefined) setTextX(state.textX);
+        if (state.textY !== undefined) setTextY(state.textY);
+        if (state.textRotation !== undefined) setTextRotation(state.textRotation);
+        if (state.imageScale !== undefined) setImageScale(state.imageScale);
+        if (state.imageX !== undefined) setImageX(state.imageX);
+        if (state.imageY !== undefined) setImageY(state.imageY);
+        if (state.imageRotation !== undefined) setImageRotation(state.imageRotation);
+        if (Array.isArray(state.additionalTextLayers)) setAdditionalTextLayers(state.additionalTextLayers);
+        if (Array.isArray(state.additionalGraphicLayers)) setAdditionalGraphicLayers(state.additionalGraphicLayers);
+        if (state.uploadedFileName !== undefined) setUploadedFileName(state.uploadedFileName);
+        if (state.uploadedImageUrl) setUploadedImageUrl(state.uploadedImageUrl);
+        addToast('info', 'Design Loaded', `"${dName || 'Saved Design'}" loaded.`);
+      };
+      let found = false;
+      try {
+        const stored = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+        const match = stored.find((d) => String(d.id || d._id) === String(libId));
+        if (match?.canvasState) { applyState(match.canvasState, match.name); found = true; }
+      } catch (e) { console.warn('[Studio] localStorage read failed:', e); }
+      if (!found && api.library.getById) {
+        api.library.getById(libId).then((res) => {
+          const item = res?.data?.item || res?.data;
+          if (item?.canvasState) applyState(item.canvasState, item.name);
+        }).catch(() => {});
+      }
+    }
+  }, [searchParams, handleProductSelect, products, addToast]);
 
-  const toolTabs = [
-    { id: 'templates', content: 'Templates' },
-    { id: 'text', content: 'Text' },
-    { id: 'upload', content: 'Upload' },
-    { id: 'elements', content: 'Elements' },
-    { id: 'shapes', content: 'Shapes' },
-    { id: 'layers', content: 'Layers' },
-  ];
+  // 
+  // Render
+  // 
+  const canvasW = 420;
+  const canvasH = 480;
 
   return (
-    <Page
-      title={activeProduct.name}
-      subtitle={`Products > ${activeProduct.name} > Customize`}
-      primaryAction={{
-        content: isSaving ? 'Saving...' : 'Save Design',
-        loading: isSaving,
-        onAction: handleSaveDesign,
-      }}
-      secondaryActions={[
-        {
-          content: 'Preview Technical Proof',
-          onAction: () => setPrintPreviewOpen(true),
-        },
-        {
-          content: 'Inspect Artwork Specs',
-          onAction: () => setValidatorOpen(true),
-        },
-        {
-          content: 'Version History',
-          onAction: () => setVersionCompareOpen(true),
-        },
-      ]}
-    >
-      <BlockStack gap="400">
-        {/* Banner Alerts */}
-        {bannerAlert && (
-          <Banner
-            title={bannerAlert.title}
-            tone={bannerAlert.tone}
-            onDismiss={() => setBannerAlert(null)}
+    <div className="cfs-root">
+      {/* ---------------- TOP BAR ---------------- */}
+      <div className="cfs-topbar">
+        <button className="cfs-topbar-brand" onClick={() => navigate(`${basePath}/`)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+          <div className="cfs-topbar-brand-dot" />
+          CustomForge Studio
+        </button>
+        <div className="cfs-topbar-divider" />
+        <div className="cfs-topbar-title">
+          {activeProduct.name} {selectedColorName ? `- ${selectedColorName}` : ''} {selectedSize && selectedSize !== 'Default' ? `- ${selectedSize}` : ''}
+        </div>
+
+        {/* Action toolbar */}
+        <div className="cfs-topbar-actions">
+          <button
+            className="cfs-btn cfs-btn-ghost cfs-btn-sm"
+            disabled={historyIndex <= 0}
+            onClick={handleUndo}
+            title="Undo"
+          >Undo</button>
+          <button
+            className="cfs-btn cfs-btn-ghost cfs-btn-sm"
+            disabled={historyIndex >= history.length - 1}
+            onClick={handleRedo}
+            title="Redo"
+          >Redo</button>
+
+          <div className="cfs-topbar-divider" />
+
+          <button
+            className="cfs-btn cfs-btn-ghost cfs-btn-sm"
+            onClick={() => setShowGuides((g) => !g)}
           >
-            <Text as="p" variant="bodyMd">{bannerAlert.message}</Text>
-          </Banner>
-        )}
+            {showGuides ? 'Hide Guides' : 'Show Guides'}
+          </button>
 
-        {/* Production Feasibility Alert */}
-        {!isFeasible && (
-          <FeasibilityWarning
-            violations={[
-              {
-                id: 'incompat_rule',
-                parameter: 'Substrate vs Technique Incompatibility',
-                severity: 'critical',
-                message: `"${selectedTechnique.toUpperCase()}" cannot be applied to "${activeProduct.name}". Machine setup requires compatible printing.`,
-                recommendation: `Switch to ${activeProduct.compatibleTechniques[0].toUpperCase()}`,
-                autoFixOption: `Switch to ${activeProduct.compatibleTechniques[0].toUpperCase()}`,
-              },
-            ]}
-            onAutoResolve={() => setSelectedTechnique(activeProduct.compatibleTechniques[0])}
-          />
-        )}
+          <button
+            className="cfs-btn cfs-btn-ghost cfs-btn-sm"
+            onClick={() => setVersionCompareOpen(true)}
+          >
+            History
+          </button>
 
-        {/* Studio Action Toolbar */}
-        <InlineStack align="space-between" alignBlock="center">
-          <ButtonGroup>
-            <Button
-              size="slim"
-              disabled={historyIndex <= 0}
-              onClick={handleUndo}
+          {savedSuccess && (
+            <span className="cfs-badge cfs-badge-success">Saved</span>
+          )}
+
+          <button
+            className="cfs-btn cfs-btn-secondary cfs-btn-sm"
+            onClick={handleSaveDesign}
+            disabled={isSaving}
+          >
+            {isSaving ? <><span className="cfs-spinner" /> Saving...</> : <><IconSave /> Save Design</>}
+          </button>
+
+          <button
+            className="cfs-btn cfs-btn-primary cfs-btn-sm"
+            onClick={handleOpenPublish}
+          ><IconPublish /> Publish to Storefront</button>
+        </div>
+      </div>
+
+      {/* ---------------- BODY ---------------- */}
+      <div className="cfs-body">
+
+        {/*  Left sidebar icon rail  */}
+        <div className="cfs-sidebar">
+          {TOOL_BUTTONS.map((t) => (
+            <button
+              key={t.id}
+              className={`cfs-tool-btn ${activeTool === t.id ? 'active' : ''}`}
+              onClick={() => setActiveTool(activeTool === t.id ? null : t.id)}
+              title={t.label}
             >
-              ← Undo
-            </Button>
-            <Button
-              size="slim"
-              disabled={historyIndex >= history.length - 1}
-              onClick={handleRedo}
-            >
-              Redo →
-            </Button>
-          </ButtonGroup>
+              <span className="cfs-tool-icon">{getToolIcon(t.id)}</span>
+              <span className="cfs-tool-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
 
-          <InlineStack gap="200" alignBlock="center">
-            <Badge tone="success">320 DPI Certified</Badge>
-            <Badge tone="info">{selectedTechnique.toUpperCase()}</Badge>
-            {savedSuccess && <Badge tone="magic">Saved v2</Badge>}
-          </InlineStack>
-        </InlineStack>
+        {/*  Inspector Panel (slides open alongside sidebar)  */}
+        {activeTool && (
+          <div className="cfs-inspector">
+            <div className="cfs-inspector-header">
+              <span className="cfs-inspector-title">
+                {TOOL_BUTTONS.find((t) => t.id === activeTool)?.label || 'Tools'}
+              </span>
+              <button className="cfs-btn-icon" onClick={() => setActiveTool(null)} title="Close">&times;</button>
+            </div>
+            <div className="cfs-inspector-body">
 
-        {/* ── PRODUCT CATEGORY SWITCHER (LIKE IN IMAGE-1) ── */}
-        <Card>
-          <InlineStack align="space-between" alignBlock="center" wrap gap="300">
-            <InlineStack gap="200" alignBlock="center">
-              <Text variant="headingSm" as="span" fontWeight="bold">
-                Select Product:
-              </Text>
-              <ButtonGroup variant="segmented">
-                <Button
-                  size="medium"
-                  pressed={selectedProductId === 'tshirt'}
-                  onClick={() => handleProductSelect('tshirt')}
-                >
-                  👕 T-Shirt
-                </Button>
-                <Button
-                  size="medium"
-                  pressed={selectedProductId === 'hoodie'}
-                  onClick={() => handleProductSelect('hoodie')}
-                >
-                  🧥 Hoodie
-                </Button>
-                <Button
-                  size="medium"
-                  pressed={selectedProductId === 'mug'}
-                  onClick={() => handleProductSelect('mug')}
-                >
-                  ☕ Mug
-                </Button>
-                <Button
-                  size="medium"
-                  pressed={selectedProductId === 'phone_case'}
-                  onClick={() => handleProductSelect('phone_case')}
-                >
-                  📱 Phone Case
-                </Button>
-              </ButtonGroup>
-            </InlineStack>
+              {/*  TEMPLATES  */}
+              {activeTool === TOOL.TEMPLATES && (
+                <>
+                  <p className="cfs-text-sm">Start with a template, then edit freely:</p>
+                  <div className="cfs-template-grid">
+                    {TEMPLATE_PRESETS.map((tpl) => (
+                      <div
+                        key={tpl.title}
+                        className="cfs-template-card"
+                        onClick={() => {
+                          setCustomText(tpl.text);
+                          if (!uploadedImageUrl) {
+                            setUploadedFileName(tpl.title);
+                            setUploadedFileSize('Built-in');
+                            setUploadedFile(null);
+                          } else {
+                            addGraphicLayer(tpl.title);
+                          }
+                          setActiveTool(TOOL.TEXT);
+                        }}
+                      >
+                        <div className="cfs-template-card-icon"><IconTemplates size={24} /></div>
+                        <div className="cfs-template-card-title">{tpl.title}</div>
+                        <div className="cfs-template-card-sub">{tpl.category}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
 
-            {/* Quick Product Color Swatches */}
-            <InlineStack gap="200" alignBlock="center">
-              <Text variant="bodySm" tone="subdued" as="span">Garment / Color:</Text>
-              <InlineStack gap="150" wrap>
-                {activeProduct.colorNames.map((cName, idx) => (
-                  <Button
-                    key={cName}
-                    size="slim"
-                    pressed={selectedColorIndex === idx}
-                    onClick={() => setSelectedColorIndex(idx)}
-                  >
-                    {cName}
-                  </Button>
-                ))}
-              </InlineStack>
-            </InlineStack>
-          </InlineStack>
-        </Card>
-
-        {/* Main 3-Column Studio Layout */}
-        <Layout>
-          {/* ════ COLUMN 1: Tool Selection & Inspector Panel (approx 35% width) ════ */}
-          <Layout.Section variant="oneThird">
-            <Card>
-              <BlockStack gap="400">
-                {/* Horizontal Tool Tabs */}
-                <Tabs
-                  tabs={toolTabs}
-                  selected={activeToolIndex}
-                  onSelect={setActiveToolIndex}
-                />
-
-                {/* ── TOOL: TEXT ── */}
-                {activeToolIndex === 1 && (
-                  <BlockStack gap="400">
-                    <TextField
-                      label="Your Text"
+              {/*  TEXT TOOL  */}
+              {activeTool === TOOL.TEXT && (
+                <div className="cfs-section">
+                  <div className="cfs-section-heading">Text Content</div>
+                  <div>
+                    <label className="cfs-label">Your Text</label>
+                    <textarea
+                      className="cfs-textarea"
+                      rows={2}
                       value={customText}
-                      onChange={handleTextChange}
-                      autoComplete="off"
+                      onChange={(e) => handleTextChange(e.target.value)}
+                      placeholder="Type your design text..."
                     />
+                  </div>
 
-                    {/* Font Selector */}
-                    <Select
-                      label="Font Family"
-                      options={FONTS}
-                      value={selectedFont}
-                      onChange={setSelectedFont}
-                    />
+                  <div>
+                    <label className="cfs-label">Font Family</label>
+                    <select className="cfs-select" value={selectedFont} onChange={(e) => setSelectedFont(e.target.value)}>
+                      {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                  </div>
 
-                    {/* Formatting & Alignment */}
-                    <BlockStack gap="150">
-                      <Text variant="bodySm" tone="subdued" as="span">Styling & Alignment</Text>
-                      <InlineStack gap="200" wrap>
-                        <Button
-                          size="slim"
-                          pressed={isBold}
-                          onClick={() => setIsBold((b) => !b)}
-                        >
-                          B
-                        </Button>
-                        <Button
-                          size="slim"
-                          pressed={isItalic}
-                          onClick={() => setIsItalic((i) => !i)}
-                        >
-                          I
-                        </Button>
-                        <Button
-                          size="slim"
-                          pressed={isUnderline}
-                          onClick={() => setIsUnderline((u) => !u)}
-                        >
-                          U
-                        </Button>
-                        <Button
-                          size="slim"
-                          pressed={alignment === 'left'}
-                          onClick={() => setAlignment('left')}
-                        >
-                          Left
-                        </Button>
-                        <Button
-                          size="slim"
-                          pressed={alignment === 'center'}
-                          onClick={() => setAlignment('center')}
-                        >
-                          Center
-                        </Button>
-                        <Button
-                          size="slim"
-                          pressed={alignment === 'right'}
-                          onClick={() => setAlignment('right')}
-                        >
-                          Right
-                        </Button>
-                      </InlineStack>
-                    </BlockStack>
-
-                    {/* Text Color Swatches */}
-                    <BlockStack gap="200">
-                      <Text variant="bodySm" tone="subdued" as="span">Text Color</Text>
-                      <InlineStack gap="200" wrap>
-                        {COLOR_PALETTE.map((c) => (
-                          <Button
-                            key={c.hex}
-                            size="slim"
-                            pressed={textColor === c.hex}
-                            onClick={() => setTextColor(c.hex)}
-                          >
-                            {c.label}
-                          </Button>
-                        ))}
-                      </InlineStack>
-                    </BlockStack>
-
-                    {/* Effects Selector (None, Shadow, Outline, Curve) */}
-                    <BlockStack gap="200">
-                      <Text variant="bodySm" tone="subdued" as="span">Effects</Text>
-                      <InlineStack gap="150" wrap>
-                        {EFFECTS.map((eff) => (
-                          <Button
-                            key={eff.id}
-                            size="slim"
-                            pressed={selectedEffect === eff.id}
-                            onClick={() => setSelectedEffect(eff.id)}
-                          >
-                            {eff.label}
-                          </Button>
-                        ))}
-                      </InlineStack>
-                    </BlockStack>
-
-                    <Divider />
-
-                    {/* Manual Text Adjustments Section */}
-                    <BlockStack gap="250">
-                      <InlineStack align="space-between" alignBlock="center">
-                        <Text variant="headingSm" as="h4">Manual Text Adjustments</Text>
-                        <Button size="slim" variant="plain" onClick={handleResetText}>
-                          Reset Text
-                        </Button>
-                      </InlineStack>
-
-                      <RangeSlider
-                        label={`Text Size: ${textScale}%`}
-                        value={textScale}
-                        onChange={setTextScale}
-                        min={20}
-                        max={200}
-                        output
-                      />
-
-                      <RangeSlider
-                        label={`Horizontal Position (X): ${textX > 0 ? `+${textX}` : textX}px`}
-                        value={textX}
-                        onChange={setTextX}
-                        min={-140}
-                        max={140}
-                        output
-                      />
-
-                      <RangeSlider
-                        label={`Vertical Position (Y): ${textY > 0 ? `+${textY}` : textY}px`}
-                        value={textY}
-                        onChange={setTextY}
-                        min={-140}
-                        max={140}
-                        output
-                      />
-
-                      <RangeSlider
-                        label={`Rotation: ${textRotation}°`}
-                        value={textRotation}
-                        onChange={setTextRotation}
-                        min={-180}
-                        max={180}
-                        output
-                      />
-
-                      <BlockStack gap="150">
-                        <Text variant="bodyXs" tone="subdued" as="span">Nudge Text Position:</Text>
-                        <InlineStack gap="150" wrap>
-                          <Button size="slim" onClick={() => nudgeText(0, -10)}>⬆ Up</Button>
-                          <Button size="slim" onClick={() => nudgeText(0, 10)}>⬇ Down</Button>
-                          <Button size="slim" onClick={() => nudgeText(-10, 0)}>⬅ Left</Button>
-                          <Button size="slim" onClick={() => nudgeText(10, 0)}>➡ Right</Button>
-                          <Button size="slim" onClick={() => { setTextX(0); setTextY(0); }}>🎯 Center</Button>
-                        </InlineStack>
-                      </BlockStack>
-                    </BlockStack>
-                  </BlockStack>
-                )}
-
-                {/* ── TOOL: TEMPLATES ── */}
-                {activeToolIndex === 0 && (
-                  <BlockStack gap="300">
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      Select a pre-made template to apply instantly:
-                    </Text>
-                    {['Good Vibes', 'Mountain Adventure', 'Beach Sunset', 'Minimal Logo'].map((t) => (
-                      <Card key={t} background="bg-surface-secondary">
-                        <InlineStack align="space-between" alignBlock="center">
-                          <Text variant="bodyMd" fontWeight="bold" as="span">{t}</Text>
-                          <Button
-                            size="slim"
-                            variant="primary"
-                            onClick={() => setCustomText(t)}
-                          >
-                            Apply
-                          </Button>
-                        </InlineStack>
-                      </Card>
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Style</div>
+                  <div className="cfs-row cfs-flex-wrap" style={{ gap: 5 }}>
+                    {[
+                      { label: 'B', active: isBold, action: () => setIsBold((b) => !b), title: 'Bold', style: { fontWeight: 800 } },
+                      { label: 'I', active: isItalic, action: () => setIsItalic((i) => !i), title: 'Italic', style: { fontStyle: 'italic' } },
+                      { label: 'U', active: isUnderline, action: () => setIsUnderline((u) => !u), title: 'Underline', style: { textDecoration: 'underline' } },
+                      { label: <IconAlignLeft />, active: alignment === 'left', action: () => setAlignment('left'), title: 'Align Left' },
+                      { label: <IconAlignCenter />, active: alignment === 'center', action: () => setAlignment('center'), title: 'Align Center' },
+                      { label: <IconAlignRight />, active: alignment === 'right', action: () => setAlignment('right'), title: 'Align Right' },
+                    ].map((btn) => (
+                      <button
+                        key={btn.title}
+                        title={btn.title}
+                        className={`cfs-btn cfs-btn-toggle cfs-btn-sm ${btn.active ? 'active' : ''}`}
+                        onClick={btn.action}
+                        style={btn.style}
+                      >
+                        {btn.label}
+                      </button>
                     ))}
-                  </BlockStack>
-                )}
+                  </div>
 
-                {/* ── TOOL: UPLOAD ── */}
-                {activeToolIndex === 2 && (
-                  <BlockStack gap="350">
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      Upload your artwork (SVG, PNG, AI, EPS, JPG):
-                    </Text>
-                    <DropZone
-                      onDrop={handleDrop}
-                      accept="image/svg+xml,image/png,image/jpeg,application/postscript,application/pdf"
-                      type="image"
-                      allowMultiple={false}
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Text Color</div>
+                  <div className="cfs-color-input-wrap">
+                    <input type="color" className="cfs-color-picker" value={textColor} onChange={(e) => setTextColor(e.target.value)} />
+                    <span className="cfs-color-hex">{textColor}</span>
+                  </div>
+                  <div className="cfs-swatch-row">
+                    {COLOR_PALETTE.map((c) => (
+                      <button
+                        key={c.hex}
+                        className={`cfs-swatch ${textColor === c.hex ? 'active' : ''}`}
+                        title={c.label}
+                        style={{ backgroundColor: c.hex, border: c.hex === '#ffffff' ? '1px solid rgba(255,255,255,0.15)' : undefined }}
+                        onClick={() => setTextColor(c.hex)}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Effect</div>
+                  <div className="cfs-effect-row">
+                    {EFFECTS.map((eff) => (
+                      <button
+                        key={eff.id}
+                        className={`cfs-effect-pill ${selectedEffect === eff.id ? 'active' : ''}`}
+                        onClick={() => setSelectedEffect(eff.id)}
+                      >
+                        {eff.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="cfs-divider" />
+                  <div className="cfs-row-between">
+                    <span className="cfs-section-heading" style={{ marginBottom: 0 }}>Position & Scale</span>
+                    <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" onClick={handleResetText}>Reset</button>
+                  </div>
+                  <CfsSlider label="Size" value={textScale} onChange={setTextScale} min={20} max={200} unit="%" />
+                  <CfsSlider label="X Position" value={textX} onChange={setTextX} min={-140} max={140} unit="px" />
+                  <CfsSlider label="Y Position" value={textY} onChange={setTextY} min={-140} max={140} unit="px" />
+                  <CfsSlider label="Rotation" value={textRotation} onChange={setTextRotation} min={-180} max={180} unit="deg" />
+
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Nudge</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, maxWidth: 100, margin: '0 auto' }}>
+                    <span />
+                    <button className="cfs-nudge-btn" onClick={() => nudgeText(0, -10)} title="Up"><IconArrowUp /></button>
+                    <span />
+                    <button className="cfs-nudge-btn" onClick={() => nudgeText(-10, 0)} title="Left"><IconArrowLeft /></button>
+                    <button className="cfs-nudge-btn" onClick={() => { setTextX(0); setTextY(0); }} title="Center"><IconCenterTarget /></button>
+                    <button className="cfs-nudge-btn" onClick={() => nudgeText(10, 0)} title="Right"><IconArrowRight /></button>
+                    <span />
+                    <button className="cfs-nudge-btn" onClick={() => nudgeText(0, 10)} title="Down"><IconArrowDown /></button>
+                    <span />
+                  </div>
+
+                  <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" style={{ width: '100%', marginTop: 4 }} onClick={addTextLayer}>
+                    + Add Another Text Layer
+                  </button>
+                </div>
+              )}
+
+              {/*  UPLOAD  */}
+              {activeTool === TOOL.UPLOAD && (
+                <div className="cfs-section">
+                  <div className="cfs-section-heading">Upload Artwork</div>
+                  <div
+                    ref={dropzoneRef}
+                    className={`cfs-dropzone ${isDragActive ? 'drag-active' : ''}`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,application/postscript,application/pdf"
+                      style={{ display: 'none' }}
+                      onChange={handleFileInput}
+                    />
+                  <div className="cfs-dropzone-icon"><IconUpload size={32} /></div>
+                    <div className="cfs-dropzone-title">
+                      {uploadedImageUrl || uploadedFileName ? 'Replace artwork' : 'Drop artwork here'}
+                    </div>
+                    <div className="cfs-dropzone-sub">SVG, PNG, JPG, AI, EPS, PDF</div>
+                  </div>
+
+                  {(uploadedImageUrl || uploadedFileName) && (
+                    <>
+                      <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                        <div className="cfs-row-between">
+                          <span className="cfs-text-md" style={{ fontWeight: 600 }}>
+                            {uploadedFileName || 'Custom Artwork'}
+                          </span>
+                          <span className="cfs-badge cfs-badge-success">Loaded</span>
+                        </div>
+                        <div className="cfs-text-xs" style={{ marginTop: 3 }}>{uploadedFileSize}</div>
+                      </div>
+
+                      {uploadedImageUrl && (
+                        <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div className="cfs-transparency-bg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
+                            <img src={uploadedImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {backgroundRemovalError && (
+                        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#ef4444' }}>
+                          {backgroundRemovalError}
+                        </div>
+                      )}
+
+                      {backgroundRemovalResult && (
+                        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div className="cfs-text-sm" style={{ marginBottom: 6, fontWeight: 600 }}>Background Removed Preview</div>
+                          <div className="cfs-transparency-bg" style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, marginBottom: 8 }}>
+                            <img src={backgroundRemovalResult.url} alt="BG removed" style={{ maxHeight: 80, objectFit: 'contain' }} />
+                          </div>
+                          <div className="cfs-row" style={{ gap: 6 }}>
+                    <button className="cfs-btn cfs-btn-primary cfs-btn-sm cfs-flex-1" onClick={handleAcceptBgRemoval}>Apply</button>
+                    <button className="cfs-btn cfs-btn-ghost cfs-btn-sm cfs-flex-1" onClick={handleDiscardBgRemoval}>Discard</button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="cfs-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                        <button
+                          className="cfs-btn cfs-btn-secondary cfs-btn-sm"
+                          onClick={handleBackgroundRemoval}
+                          disabled={backgroundRemovalLoading || !uploadedFile || !uploadedFile.type?.startsWith('image/') || Boolean(backgroundRemovalResult)}
+                        >
+                    {backgroundRemovalLoading ? <><span className="cfs-spinner" /> Removing...</> : "Remove Background"}
+                        </button>
+                        <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" style={{ color: '#ef4444' }} onClick={handleRemoveImage}>
+                          Remove Image
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/*  IMAGE ADJUSTMENTS (CSS Filters)  */}
+              {activeTool === TOOL.IMAGE_ADJUST && (
+                <div className="cfs-section">
+                  <div className="cfs-row-between">
+                    <span className="cfs-section-heading" style={{ marginBottom: 0 }}>Image Adjustments</span>
+                    <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" onClick={handleResetFilters}>Reset All</button>
+                  </div>
+
+                  {!uploadedImageUrl && (
+                    <div className="cfs-text-sm" style={{ padding: '8px 0', textAlign: 'center', opacity: 0.6 }}>
+                      Upload an image first to use filters.
+                    </div>
+                  )}
+
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>CSS Filters</div>
+                  <CfsSlider label="Brightness" value={imgBrightness} onChange={setImgBrightness} min={0} max={200} unit="%" />
+                  <CfsSlider label="Contrast" value={imgContrast} onChange={setImgContrast} min={0} max={300} unit="%" />
+                  <CfsSlider label="Saturation" value={imgSaturation} onChange={setImgSaturation} min={0} max={300} unit="%" />
+                  <CfsSlider label="Hue Rotate" value={imgHueRotate} onChange={setImgHueRotate} min={0} max={360} unit="deg" />
+                  <CfsSlider label="Opacity" value={imgOpacity} onChange={setImgOpacity} min={0} max={100} unit="%" />
+                  <CfsSlider label="Drop Shadow" value={imgDropShadow} onChange={setImgDropShadow} min={0} max={30} unit="px" />
+
+                  <div className="cfs-section-heading" style={{ marginTop: 8 }}>Blend Mode</div>
+                  <div className="cfs-blend-pills">
+                    {BLEND_MODES.map((m) => (
+                      <button
+                        key={m}
+                        className={`cfs-blend-pill ${imgBlendMode === m ? 'active' : ''}`}
+                        onClick={() => setImgBlendMode(m)}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="cfs-divider" />
+                  <div className="cfs-section-heading">Transform</div>
+                  <div className="cfs-row-between">
+                    <span className="cfs-text-sm">Position &amp; Scale</span>
+                    <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" onClick={handleResetImage}>Reset</button>
+                  </div>
+                  <CfsSlider label="Scale" value={imageScale} onChange={setImageScale} min={20} max={200} unit="%" />
+                  <CfsSlider label="X Position" value={imageX} onChange={setImageX} min={-140} max={140} unit="px" />
+                  <CfsSlider label="Y Position" value={imageY} onChange={setImageY} min={-140} max={140} unit="px" />
+                  <CfsSlider label="Rotation" value={imageRotation} onChange={setImageRotation} min={-180} max={180} unit="deg" />
+
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Nudge Image</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, maxWidth: 100, margin: '0 auto' }}>
+                    <span />
+                    <button className="cfs-nudge-btn" onClick={() => nudgeImage(0, -10)} title="Up"><IconArrowUp /></button>
+                    <span />
+                    <button className="cfs-nudge-btn" onClick={() => nudgeImage(-10, 0)} title="Left"><IconArrowLeft /></button>
+                    <button className="cfs-nudge-btn" onClick={() => { setImageX(0); setImageY(0); }} title="Center"><IconCenterTarget /></button>
+                    <button className="cfs-nudge-btn" onClick={() => nudgeImage(10, 0)} title="Right"><IconArrowRight /></button>
+                    <span />
+                    <button className="cfs-nudge-btn" onClick={() => nudgeImage(0, 10)} title="Down"><IconArrowDown /></button>
+                    <span />
+                  </div>
+                </div>
+              )}
+
+              {/*  ELEMENTS / SHAPES  */}
+              {activeTool === TOOL.ELEMENTS && (
+                <div className="cfs-section">
+                  <div className="cfs-section-heading">Add Elements</div>
+                  <div className="cfs-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                    <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={addTextLayer} disabled={additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT}>
+                      + Text Layer
+                    </button>
+                    <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={() => addGraphicLayer()} disabled={additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT}>
+                      + Graphic
+                    </button>
+                    <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={() => setActiveTool(TOOL.UPLOAD)}>
+                      + Image
+                    </button>
+                  </div>
+
+                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Quick Layout Presets</div>
+                  {[
+                    { label: 'Image Top', action: () => { setImageY(-24); setTextY(32); setImageX(0); setTextX(0); } },
+                    { label: 'Text Top', action: () => { setTextY(-32); setImageY(24); setImageX(0); setTextX(0); } },
+                    { label: 'Side by Side', action: () => { setImageX(-35); setImageY(0); setTextX(35); setTextY(0); } },
+                    <button className="cfs-nudge-btn" onClick={() => { setImageX(0); setImageY(0); }} title="Center"><IconCenterTarget /></button>
+                  ].map((p) => (
+                    <button key={p.label} className="cfs-btn cfs-btn-secondary cfs-btn-sm" style={{ width: '100%', marginBottom: 4 }} onClick={p.action}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/*  LAYERS  */}
+              {activeTool === TOOL.LAYERS && (
+                <div className="cfs-section">
+                  <div className="cfs-section-heading">Design Layers</div>
+                  <div className="cfs-layer-list">
+                    {/* Layer: uploaded image */}
+                    <div className="cfs-layer-row" onClick={() => setActiveTool(TOOL.IMAGE_ADJUST)}>
+                      <span className="cfs-layer-icon"><IconLayers size={14} /></span>
+                      <span className="cfs-layer-name">{uploadedImageUrl ? 'Artwork Image' : 'Graphic Vector'}</span>
+                      <div className="cfs-layer-actions">
+                        <button className="cfs-btn-icon cfs-btn-xs" title="Edit" onClick={(e) => { e.stopPropagation(); setActiveTool(TOOL.IMAGE_ADJUST); }}>Edit</button>
+                      </div>
+                    </div>
+
+                    {/* Additional graphic layers */}
+                    {additionalGraphicLayers.map((layer, idx) => (
+                      <div key={layer.id} className="cfs-layer-row">
+                      <span className="cfs-layer-icon"><IconLayers size={14} /></span>
+                        <span className="cfs-layer-name">{layer.name}</span>
+                        <div className="cfs-layer-actions">
+                        <button className="cfs-btn-icon cfs-btn-xs" disabled={idx === 0} onClick={() => moveLayer(additionalGraphicLayers, setAdditionalGraphicLayers, layer.id, -1)} title="Move Up"><IconArrowUp /></button>
+                          <button className="cfs-btn-icon cfs-btn-xs" onClick={() => updateGraphicLayer(layer.id, { visible: layer.visible === false })}>
+                        {layer.visible === false ? 'Hidden' : 'Visible'}
+                          </button>
+                          <button className="cfs-btn-icon cfs-btn-xs" style={{ color: '#ef4444' }} onClick={() => setAdditionalGraphicLayers((ls) => ls.filter((l) => l.id !== layer.id))} title="Delete">&times;</button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Main text layer */}
+                    <div className="cfs-layer-row" onClick={() => setActiveTool(TOOL.TEXT)}>
+                      <span className="cfs-layer-icon"><IconLayers size={14} /></span>
+                      <span className="cfs-layer-name">{customText || 'Main Text'}</span>
+                      <div className="cfs-layer-actions">
+                        <button className="cfs-btn-icon cfs-btn-xs" title="Edit" onClick={(e) => { e.stopPropagation(); setActiveTool(TOOL.TEXT); }}>Edit</button>
+                      </div>
+                    </div>
+
+                    {/* Additional text layers */}
+                    {additionalTextLayers.map((layer, idx) => (
+                      <div key={layer.id} className="cfs-layer-row">
+                      <span className="cfs-layer-icon"><IconLayers size={14} /></span>
+                        <span className="cfs-layer-name">{layer.text || layer.name}</span>
+                        <div className="cfs-layer-actions">
+                        <button className="cfs-btn-icon cfs-btn-xs" disabled={idx === 0} onClick={() => moveLayer(additionalTextLayers, setAdditionalTextLayers, layer.id, -1)} title="Move Up"><IconArrowUp /></button>
+                          <button className="cfs-btn-icon cfs-btn-xs" onClick={() => updateTextLayer(layer.id, { visible: layer.visible === false })}>
+                        {layer.visible === false ? 'Hidden' : 'Visible'}
+                          </button>
+                          <button className="cfs-btn-icon cfs-btn-xs" style={{ color: '#ef4444' }} onClick={() => setAdditionalTextLayers((ls) => ls.filter((l) => l.id !== layer.id))} title="Delete">&times;</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Extra layer controls (visible in expanded panel) */}
+                  {additionalTextLayers.map((layer) => (
+                    <div key={`ctrl-${layer.id}`} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '10px 10px' }}>
+                      <div className="cfs-text-sm" style={{ marginBottom: 6, fontWeight: 600, color: 'var(--cfs-text)' }}>
+                        {layer.name}
+                      </div>
+                      <div style={{ marginBottom: 6 }}>
+                        <label className="cfs-label">Text</label>
+                        <input className="cfs-input" value={layer.text} onChange={(e) => updateTextLayer(layer.id, { text: e.target.value })} maxLength={200} />
+                      </div>
+                      <div style={{ marginBottom: 6 }}>
+                        <label className="cfs-label">Font</label>
+                        <select className="cfs-select" value={layer.font} onChange={(e) => updateTextLayer(layer.id, { font: e.target.value })}>
+                          {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                        </select>
+                      </div>
+                      <CfsSlider label="Scale" value={layer.scale} onChange={(v) => updateTextLayer(layer.id, { scale: v })} min={20} max={200} unit="%" />
+                      <CfsSlider label="X" value={layer.x} onChange={(v) => updateTextLayer(layer.id, { x: v })} min={-140} max={140} unit="px" />
+                      <CfsSlider label="Y" value={layer.y} onChange={(v) => updateTextLayer(layer.id, { y: v })} min={-140} max={140} unit="px" />
+                      <CfsSlider label="Rotation" value={layer.rotation} onChange={(v) => updateTextLayer(layer.id, { rotation: v })} min={-180} max={180} unit="deg" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/*  PRODUCTS CATALOG  */}
+              {activeTool === TOOL.PRODUCTS && (
+                <div className="cfs-section">
+                  <div className="cfs-section-heading">Choose Product</div>
+                  <div className="cfs-cat-tabs">
+                    {productCategories.map((cat) => (
+                      <button
+                        key={cat}
+                        className={`cfs-cat-tab ${selectedCategory === cat ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          if (cat !== 'all') {
+                            const first = products.find((p) => (p.category || p.productType || 'Other') === cat);
+                            if (first) handleProductSelect(first.id);
+                          }
+                        }}
+                      >
+                    {cat === 'all' ? 'All' : cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="cfs-product-grid">
+                    {filteredProducts.map((prod) => (
+                      <div
+                        key={prod.id}
+                        className={`cfs-product-thumb ${prod.id === selectedProductId ? 'active' : ''}`}
+                        onClick={() => {
+                          if (prod.id === '__custom__') return; // handled below
+                          handleProductSelect(prod.id);
+                        }}
+                      >
+                        <img src={prod.image} alt={prod.name} />
+                        <div className="cfs-product-thumb-name">{prod.name}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* External / custom product entry */}
+                  <div className="cfs-divider" />
+                  <div className="cfs-section-heading">Add External Product</div>
+                  <p className="cfs-text-xs" style={{ lineHeight: 1.5 }}>
+                    Link a product not yet in your store. It will be treated as a custom base product on the canvas.
+                  </p>
+                  <div>
+                    <label className="cfs-label">Product Name</label>
+                    <input className="cfs-input" value={customProductName} onChange={(e) => setCustomProductName(e.target.value)} placeholder="e.g. Premium Bomber Jacket" />
+                  </div>
+                  <div>
+                    <label className="cfs-label">Mockup URL (optional)</label>
+                    <input className="cfs-input" value={customProductUrl} onChange={(e) => setCustomProductUrl(e.target.value)} placeholder="https://.../product-mockup.jpg" />
+                  </div>
+                  <button
+                    className="cfs-btn cfs-btn-primary cfs-btn-sm"
+                    style={{ width: '100%' }}
+                    disabled={!customProductName.trim()}
+                    onClick={() => {
+                      if (!customProductName.trim()) return;
+                      const newId = `custom_${Date.now()}`;
+                      const newProd = {
+                        id: newId,
+                        category: 'Custom',
+                        name: customProductName.trim(),
+                        subtitle: 'External / custom base product',
+                        price: '$0.00',
+                        colors: ['#ffffff'],
+                        colorNames: ['Default'],
+                        image: customProductUrl.trim() || whiteTshirtImg,
+                        compatibleTechniques: ['dtg', 'uv_print'],
+                      };
+                      setCustomProducts((prev) => [newProd, ...prev]);
+                      setSelectedProductId(newId);
+                      setSelectedCategory('Custom');
+                      addToast('info', 'Custom Product Added', `"${newProd.name}" loaded on canvas as a custom base.`);
+                      setCustomProductName('');
+                      setCustomProductUrl('');
+                    }}
+                  >
+                    Load on Canvas
+                  </button>
+
+                  {/* Shopify variant status */}
+                  {activeProduct.storeProductId && variantsLoadingProductId === activeProduct.id && (
+                    <div className="cfs-row" style={{ gap: 6, padding: '6px 0' }}>
+                      <span className="cfs-spinner" />
+                      <span className="cfs-text-sm">Loading Shopify variants...</span>
+                    </div>
+                  )}
+                  {variantsLoadError && (
+                    <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#ef4444' }}>
+                      {variantsLoadError}
+                      <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" style={{ marginLeft: 8 }} onClick={() => loadProductVariants(activeProduct.id).catch(() => {})}>
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {/*  Center Canvas Area  */}
+        <div className="cfs-canvas-area">
+          {/* Canvas toolbar (zoom / guides quick buttons) */}
+          <div className="cfs-canvas-toolbar">
+            <span className="cfs-badge cfs-badge-muted">{activeProduct.name}</span>
+            <span className="cfs-badge cfs-badge-accent">{activePrintArea.label} - {activePrintArea.dimensions}</span>
+            <span style={{ flex: 1 }} />
+            <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" onClick={() => {
+              setCustomText('Good Vibes');
+              setSelectedFont('Poppins');
+              setSelectedEffect('curve');
+              setTextScale(85); setTextX(0); setTextY(32); setTextRotation(0);
+              setImageScale(90); setImageX(0); setImageY(-24); setImageRotation(0);
+              handleResetFilters();
+            }}>
+              Reset Canvas
+            </button>
+          </div>
+
+          <div className="cfs-canvas-scroll">
+            <CanvasStage
+              activeProduct={activeProduct}
+              selectedColorIndex={selectedColorIndex}
+              customText={customText}
+              fontFamily={selectedFont}
+              textColor={textColor}
+              isBold={isBold}
+              isItalic={isItalic}
+              isUnderline={isUnderline}
+              alignment={alignment}
+              effect={selectedEffect}
+              imageScale={imageScale}
+              imageX={imageX}
+              imageY={imageY}
+              imageRotation={imageRotation}
+              textScale={textScale}
+              textX={textX}
+              textY={textY}
+              textRotation={textRotation}
+              uploadedImageUrl={uploadedImageUrl}
+              uploadedFileName={uploadedImageUrl ? null : uploadedFileName}
+              additionalTextLayers={additionalTextLayers}
+              additionalGraphicLayers={additionalGraphicLayers}
+              imgBrightness={imgBrightness}
+              imgContrast={imgContrast}
+              imgSaturation={imgSaturation}
+              imgHueRotate={imgHueRotate}
+              imgOpacity={imgOpacity}
+              imgBlendMode={imgBlendMode}
+              imgDropShadow={imgDropShadow}
+              showGuides={showGuides}
+              canvasWidth={canvasW}
+              canvasHeight={canvasH}
+            />
+          </div>
+
+          {/* Canvas spec footer */}
+          <div style={{ padding: '8px 16px', borderTop: '1px solid var(--cfs-border)', display: 'flex', alignItems: 'center', gap: 12, fontSize: 10, color: 'var(--cfs-text-dim)' }}>
+            <span>{activeProduct.name}</span>
+            <span>-</span>
+            <span>{selectedColorName}</span>
+            <span>-</span>
+            <span>Text {textScale}%</span>
+            <span>-</span>
+            <span>Image {imageScale}%</span>
+            <span>-</span>
+            <span>Brightness {imgBrightness}%</span>
+            {imgBlendMode !== 'normal' && <><span>-</span><span>Blend: {imgBlendMode}</span></>}
+          </div>
+        </div>
+
+        {/*  Right Properties Panel  */}
+        <div className="cfs-right-panel">
+          <div className="cfs-right-panel-header">
+            <div className="cfs-row-between">
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--cfs-text)' }}>Product</span>
+              <span className="cfs-badge cfs-badge-accent">Studio</span>
+            </div>
+          </div>
+          <div className="cfs-right-panel-body">
+
+            {/* Product Info Card */}
+            <div className="cfs-product-info-card">
+              <img src={activeProductImage || activeProduct.image} alt={activeProduct.name} className="cfs-product-info-img" />
+              <div className="cfs-product-info-body">
+                <div className="cfs-product-name">{activeProduct.name}</div>
+                <div className="cfs-product-subtitle">{activeProduct.subtitle}</div>
+                <div className="cfs-product-price">
+                  {activeVariant?.price && activeProduct.currencyCode
+                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: activeProduct.currencyCode }).format(Number(activeVariant.price))
+                    : activeProduct.price || '-'}
+                </div>
+              </div>
+            </div>
+
+            {/* Color Picker */}
+            {colorOption && (
+              <div className="cfs-section">
+                <div className="cfs-section-heading">{colorOption.name}</div>
+                <div className="cfs-swatch-row">
+                  {colorOption.values.map((colorName, idx) => (
+                    <button
+                      key={colorName}
+                      className={`cfs-swatch ${selectedColorName === colorName ? 'active' : ''}`}
+                      title={colorName}
+                      style={{
+                        backgroundColor: activeProduct.colors[idx] || '#ccc',
+                        border: activeProduct.colors[idx] === '#ffffff' ? '1px solid rgba(255,255,255,0.2)' : undefined,
+                      }}
+                      onClick={() => handleProductOptionChange(colorOption.name, colorName)}
+                    />
+                  ))}
+                </div>
+                <div className="cfs-text-xs" style={{ color: 'var(--cfs-text-muted)' }}>{selectedColorName}</div>
+              </div>
+            )}
+
+            {/* Size Selector */}
+            {sizeOption && (
+              <div className="cfs-section">
+                <div className="cfs-section-heading">{sizeOption.name}</div>
+                <div className="cfs-seg">
+                  {sizeOption.values.map((size) => (
+                    <button
+                      key={size}
+                      className={`cfs-seg-btn ${selectedSize === size ? 'active' : ''}`}
+                      onClick={() => handleProductOptionChange(sizeOption.name, size)}
                     >
-                      <DropZone.FileUpload
-                        actionTitle={uploadedImageUrl || uploadedFileName ? "Replace artwork file" : "Add file"}
-                        actionHint="Accepts SVG, PNG, AI, EPS, JPG up to 50MB with 300+ DPI"
-                      />
-                    </DropZone>
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                    {(uploadedImageUrl || uploadedFileName) && (
-                      <BlockStack gap="300">
-                        <Banner tone="info" title="Current Artwork File">
-                          <Text as="p" variant="bodySm">
-                            {uploadedFileName || 'Custom Artwork'} ({uploadedFileSize}) — Pre-flight passed.
-                          </Text>
-                          <Box paddingBlockStart="200">
-                            <InlineStack gap="200">
-                              <Button size="slim" onClick={() => setValidatorOpen(true)}>
-                                Inspect Artwork Specs
-                              </Button>
-                              <Button size="slim" tone="critical" onClick={handleRemoveImage}>
-                                Remove Image
-                              </Button>
-                            </InlineStack>
-                          </Box>
-                        </Banner>
+            {/* Other options */}
+            {otherProductOptions.map((opt) => (
+              <div key={opt.name} className="cfs-section">
+                <div className="cfs-section-heading">{opt.name}</div>
+                <select
+                  className="cfs-select"
+                  value={selectedOptionValues[opt.name] || opt.values[0]}
+                  onChange={(e) => handleProductOptionChange(opt.name, e.target.value)}
+                >
+                  {opt.values.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+            ))}
 
-                        {/* Dedicated Manual Image Adjustments Panel */}
-                        <Card background="bg-surface-secondary">
-                          <BlockStack gap="250">
-                            <InlineStack align="space-between" alignBlock="center">
-                              <Text variant="headingSm" as="h4">Manual Image Adjustments</Text>
-                              <Button size="slim" variant="plain" onClick={handleResetImage}>
-                                Reset Image
-                              </Button>
-                            </InlineStack>
+            {/* Variant warning */}
+            {!variantSelectionValid && variantMatrixLoaded && !variantsLoadError && (
+              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#ef4444' }}>
+                Selected combination has no matching Shopify variant.
+              </div>
+            )}
 
-                            <RangeSlider
-                              label={`Image Size / Scale: ${imageScale}%`}
-                              value={imageScale}
-                              onChange={setImageScale}
-                              min={20}
-                              max={200}
-                              output
-                            />
+            <div className="cfs-divider" />
 
-                            <RangeSlider
-                              label={`Horizontal Position (X): ${imageX > 0 ? `+${imageX}` : imageX}px`}
-                              value={imageX}
-                              onChange={setImageX}
-                              min={-140}
-                              max={140}
-                              output
-                            />
+            {/* Publish CTA */}
+            <div className="cfs-publish-cta">
+              <div className="cfs-publish-cta-title">Ready to go live?</div>
+              <div className="cfs-publish-cta-sub">
+                Publish this custom design directly to your Shopify storefront.
+              </div>
+              <button className="cfs-btn cfs-btn-primary" style={{ width: '100%' }} onClick={handleOpenPublish}>
+                 Publish to Storefront
+              </button>
+            </div>
 
-                            <RangeSlider
-                              label={`Vertical Position (Y): ${imageY > 0 ? `+${imageY}` : imageY}px`}
-                              value={imageY}
-                              onChange={setImageY}
-                              min={-140}
-                              max={140}
-                              output
-                            />
+            <button
+              className="cfs-btn cfs-btn-secondary"
+              style={{ width: '100%' }}
+              onClick={handleSaveDesign}
+              disabled={isSaving}
+            >
+              {isSaving ? <><span className="cfs-spinner" /> Saving...</> : <><IconSave /> Save Design</>}
+            </button>
 
-                            <RangeSlider
-                              label={`Rotation: ${imageRotation}°`}
-                              value={imageRotation}
-                              onChange={setImageRotation}
-                              min={-180}
-                              max={180}
-                              output
-                            />
+            <button
+              className="cfs-btn cfs-btn-ghost"
+              style={{ width: '100%' }}
+              onClick={() => setVersionCompareOpen(true)}
+            >
+              - Version History
+            </button>
 
-                            <BlockStack gap="150">
-                              <Text variant="bodyXs" tone="subdued" as="span">Nudge Image Position:</Text>
-                              <InlineStack gap="150" wrap>
-                                <Button size="slim" onClick={() => nudgeImage(0, -10)}>⬆ Up</Button>
-                                <Button size="slim" onClick={() => nudgeImage(0, 10)}>⬇ Down</Button>
-                                <Button size="slim" onClick={() => nudgeImage(-10, 0)}>⬅ Left</Button>
-                                <Button size="slim" onClick={() => nudgeImage(10, 0)}>➡ Right</Button>
-                                <Button size="slim" onClick={() => { setImageX(0); setImageY(0); }}>🎯 Center</Button>
-                              </InlineStack>
-                            </BlockStack>
-                          </BlockStack>
-                        </Card>
-                      </BlockStack>
-                    )}
-                  </BlockStack>
-                )}
+            <div className="cfs-divider" />
 
-                {/* ── TOOL: ELEMENTS & SHAPES & LAYERS ── */}
-                {(activeToolIndex === 3 || activeToolIndex === 4 || activeToolIndex === 5) && (
-                  <BlockStack gap="300">
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      Active layers and independent positioning for {activeProduct.name}:
-                    </Text>
+            {/* Product switcher shortcut */}
+            <div className="cfs-section">
+              <div className="cfs-section-heading">Switch Product</div>
+              <select
+                className="cfs-select"
+                value={selectedProductId}
+                onChange={(e) => handleProductSelect(e.target.value)}
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.price ? ` (${p.price})` : ''}</option>
+                ))}
+              </select>
+              <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" style={{ width: '100%' }} onClick={() => setActiveTool(TOOL.PRODUCTS)}>
+                Browse Full Catalog
+              </button>
+            </div>
 
-                    {/* Layer 1: Image / Graphic */}
-                    <Card background="bg-surface-secondary">
-                      <BlockStack gap="150">
-                        <InlineStack align="space-between" alignBlock="center">
-                          <Text variant="bodySm" fontWeight="bold" as="span">
-                            Layer 1: {uploadedImageUrl ? 'Uploaded Image' : 'Graphic Vector'}
-                          </Text>
-                          <Badge tone={uploadedImageUrl ? 'success' : 'info'} size="small">
-                            {uploadedImageUrl ? 'Raster / SVG' : 'Vector Badge'}
-                          </Badge>
-                        </InlineStack>
-                        <Text variant="bodyXs" tone="subdued" as="span">
-                          Scale: {imageScale}% • Pos: X: {imageX}px, Y: {imageY}px • Rot: {imageRotation}°
-                        </Text>
-                        <Box paddingBlockStart="100">
-                          <Button size="slim" onClick={() => setActiveToolIndex(2)}>
-                            Adjust Image Layer →
-                          </Button>
-                        </Box>
-                      </BlockStack>
-                    </Card>
+          </div>
+        </div>
 
-                    {/* Layer 2: Typography */}
-                    <Card background="bg-surface-secondary">
-                      <BlockStack gap="150">
-                        <InlineStack align="space-between" alignBlock="center">
-                          <Text variant="bodySm" fontWeight="bold" as="span">Layer 2: Typography</Text>
-                          <Badge tone="success" size="small">Active</Badge>
-                        </InlineStack>
-                        <Text variant="bodyXs" tone="subdued" as="span">
-                          "{customText}" • {selectedFont} • Scale: {textScale}% • Pos: X: {textX}px, Y: {textY}px
-                        </Text>
-                        <Box paddingBlockStart="100">
-                          <Button size="slim" onClick={() => setActiveToolIndex(1)}>
-                            Adjust Text Layer →
-                          </Button>
-                        </Box>
-                      </BlockStack>
-                    </Card>
+      </div>
 
-                    {/* Quick Layout Presets */}
-                    <Divider />
-                    <Text variant="headingXs" as="h5">Quick Layout Presets:</Text>
-                    <InlineStack gap="150" wrap>
-                      <Button size="slim" onClick={() => { setImageY(-24); setTextY(32); setImageX(0); setTextX(0); }}>
-                        Stacked (Image Top)
-                      </Button>
-                      <Button size="slim" onClick={() => { setTextY(-32); setImageY(24); setImageX(0); setTextX(0); }}>
-                        Inverted (Text Top)
-                      </Button>
-                      <Button size="slim" onClick={() => { setImageX(-35); setImageY(0); setTextX(35); setTextY(0); }}>
-                        Side by Side
-                      </Button>
-                      <Button size="slim" onClick={() => { setImageX(0); setImageY(0); setTextX(0); setTextY(0); }}>
-                        Center Both
-                      </Button>
-                    </InlineStack>
-                  </BlockStack>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
+      {/* ---------------- MODALS ---------------- */}
 
-          {/* ════ COLUMN 2: Center Live Garment Mockup Canvas (approx 45% width) ════ */}
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between" alignBlock="center">
-                  <Text variant="headingMd" as="h2">{activeProduct.name} Mockup</Text>
-                  <Badge tone="magic">
-                    {selectedProductId === 'hoodie'
-                      ? 'Chest Zone (260 × 240 mm)'
-                      : selectedProductId === 'mug'
-                      ? 'Cylinder Wrap (80 × 90 mm)'
-                      : selectedProductId === 'phone_case'
-                      ? 'Back Plate (70 × 110 mm)'
-                      : 'Front Zone (250 × 300 mm)'}
-                  </Badge>
-                </InlineStack>
-
-                {/* Quick Layer Switchers directly above canvas */}
-                <InlineStack align="center" gap="200">
-                  <Button
-                    size="slim"
-                    pressed={activeToolIndex === 2}
-                    onClick={() => setActiveToolIndex(2)}
-                  >
-                    📷 Adjust Image (Scale & Position)
-                  </Button>
-                  <Button
-                    size="slim"
-                    pressed={activeToolIndex === 1}
-                    onClick={() => setActiveToolIndex(1)}
-                  >
-                    ✏️ Adjust Text (Scale & Position)
-                  </Button>
-                </InlineStack>
-
-                {/* Visual Canvas — realistic garment mockup with live design overlay */}
-                <DesignMockupPreview
-                  productId={selectedProductId}
-                  productType={activeProduct.name}
-                  productImage={activeProduct.image}
-                  productColor={activeProduct.colors[selectedColorIndex]}
-                  productColorName={activeProduct.colorNames[selectedColorIndex]}
-                  customText={customText}
-                  designImage={uploadedImageUrl}
-                  fontFamily={selectedFont}
-                  textColor={textColor}
-                  isBold={isBold}
-                  isItalic={isItalic}
-                  isUnderline={isUnderline}
-                  alignment={alignment}
-                  effect={selectedEffect}
-                  imageScale={imageScale}
-                  imageX={imageX}
-                  imageY={imageY}
-                  imageRotation={imageRotation}
-                  textScale={textScale}
-                  textX={textX}
-                  textY={textY}
-                  textRotation={textRotation}
-                  uploadedFileName={uploadedImageUrl ? null : uploadedFileName}
-                  productLabel={`${activeProduct.name} (${activeProduct.colorNames[selectedColorIndex]})`}
-                  size="lg"
-                  showGuides={false}
-                />
-
-                {/* Pre-press spec readout below mockup */}
-                <Box paddingBlockStart="100">
-                  <Text variant="bodyXs" tone="subdued" alignment="center" as="p">
-                    Text: {selectedFont} ({textScale}%) [X: {textX}px, Y: {textY}px] | Image: ({imageScale}%) [X: {imageX}px, Y: {imageY}px]
-                  </Text>
-                  <Text variant="bodyXs" tone="subdued" alignment="center" as="p">
-                    Product: {activeProduct.name} ({activeProduct.colorNames[selectedColorIndex]})
-                  </Text>
-                </Box>
-
-                {/* Canvas Control Footer */}
-                <InlineStack align="space-between" alignBlock="center">
-                  <Button
-                    size="slim"
-                    onClick={() => {
-                      setCustomText('Good Vibes');
-                      setSelectedFont('Poppins');
-                      setSelectedEffect('curve');
-                      setTextScale(85);
-                      setTextX(0);
-                      setTextY(32);
-                      setTextRotation(0);
-                      setImageScale(90);
-                      setImageX(0);
-                      setImageY(-24);
-                      setImageRotation(0);
-                    }}
-                  >
-                    Reset Canvas to Default
-                  </Button>
-
-                  <Button
-                    variant="primary"
-                    size="slim"
-                    onClick={() => navigate(`${basePath}/proofs`)}
-                  >
-                    Generate Digital Proof →
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-
-          {/* ════ COLUMN 3: Right Product Specifications & Cart Panel (approx 20% width) ════ */}
-          <Layout.Section variant="oneThird">
-            <Card>
-              <BlockStack gap="400">
-                <Text variant="headingMd" as="h2">Product Specifications</Text>
-
-                {/* Product Summary */}
-                <Card background="bg-surface-secondary">
-                  <BlockStack gap="200">
-                    <Text variant="headingSm" as="h3">{activeProduct.name}</Text>
-                    <Text variant="bodySm" tone="subdued" as="p">{activeProduct.subtitle}</Text>
-                    <Text variant="headingLg" fontWeight="bold" as="p">{activeProduct.price}</Text>
-                  </BlockStack>
-                </Card>
-
-                {/* Product Switcher */}
-                <Select
-                  label="Select Substrate / Product"
-                  options={PRODUCTS.map((p) => ({ label: `${p.name} (${p.price})`, value: p.id }))}
-                  value={selectedProductId}
-                  onChange={setSelectedProductId}
-                />
-
-                {/* Color Swatch Picker */}
-                <BlockStack gap="150">
-                  <Text variant="bodySm" tone="subdued" as="span">
-                    Garment Color: <strong>{activeProduct.colorNames[selectedColorIndex]}</strong>
-                  </Text>
-                  <InlineStack gap="150" wrap>
-                    {activeProduct.colorNames.map((cName, idx) => (
-                      <Button
-                        key={cName}
-                        size="slim"
-                        pressed={selectedColorIndex === idx}
-                        onClick={() => setSelectedColorIndex(idx)}
-                      >
-                        {cName}
-                      </Button>
-                    ))}
-                  </InlineStack>
-                </BlockStack>
-
-                {/* Size Pills */}
-                <BlockStack gap="150">
-                  <Text variant="bodySm" tone="subdued" as="span">Size</Text>
-                  <InlineStack gap="150" wrap>
-                    {SIZES.map((s) => (
-                      <Button
-                        key={s}
-                        size="slim"
-                        pressed={selectedSize === s}
-                        onClick={() => setSelectedSize(s)}
-                      >
-                        {s}
-                      </Button>
-                    ))}
-                  </InlineStack>
-                </BlockStack>
-
-                <Divider />
-
-                {/* Actions */}
-                <BlockStack gap="200">
-                  <Button
-                    variant="primary"
-                    size="large"
-                    onClick={() => {
-                      setBannerAlert({
-                        tone: 'success',
-                        title: 'Added to Cart',
-                        message: `1x ${activeProduct.name} (${selectedSize}, ${activeProduct.colorNames[selectedColorIndex]}) with customization "${customText}" added to Shopify checkout.`,
-                      });
-                    }}
-                  >
-                    Add to Cart
-                  </Button>
-                  <Button
-                    size="large"
-                    loading={isSaving}
-                    onClick={handleSaveDesign}
-                  >
-                    Save Design
-                  </Button>
-                </BlockStack>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-      </BlockStack>
-
-      {/* ── MODALS: Pre-flight Artwork Checker, Technical Pre-press, Version History ── */}
-      <ArtworkValidatorModal
-        open={validatorOpen}
-        onClose={() => setValidatorOpen(false)}
-        onAccept={() => {
-          setValidatorOpen(false);
-          setBannerAlert({
-            tone: 'success',
-            title: 'Artwork Resolution Verified',
-            message: 'Artwork resolution passed 320 DPI commercial pre-flight check. Technical pre-press proof generated.',
-          });
-          setPrintPreviewOpen(true);
-        }}
-        onConfirm={() => {
-          setValidatorOpen(false);
-          setBannerAlert({
-            tone: 'success',
-            title: 'Artwork Resolution Verified',
-            message: 'Artwork resolution passed 320 DPI commercial pre-flight check. Technical pre-press proof generated.',
-          });
-          setPrintPreviewOpen(true);
-        }}
-        artworkData={{
-          fileName: uploadedFileName,
-          fileSize: uploadedFileSize,
-          dimensions: '2400 x 3000 px',
-          dpi: 320,
-          minRecommendedDpi: 300,
-          colorMode: 'RGB (sRGB IEC61966-2.1)',
-          targetColorMode: 'CMYK (U.S. Web Coated SWOP v2)',
-          safeZoneMargin: '5.2 mm (Required: 5.0 mm)',
-          hasTransparency: true,
-        }}
-      />
-
-      <PrintPreviewModal
-        open={printPreviewOpen}
-        onClose={() => setPrintPreviewOpen(false)}
-        proofData={{
-          orderId: `DRAFT-${Date.now().toString().slice(-6)}`,
-          productName: activeProduct.name,
-          productId: selectedProductId,
-          productColor: activeProduct.colors[selectedColorIndex],
-          customText: customText,
-          technique: selectedTechnique.toUpperCase(),
-          dimensions: '250mm x 300mm',
-          dpi: 320,
-          colorModel: 'CMYK U.S. Web Coated',
-          colorList: ['Cyan (C)', 'Magenta (M)', 'Yellow (Y)', 'Key Black (K)'],
-          resolutionStatus: 'Pass (Commercial Grade)',
-          stitchCount: 'N/A (Direct Print)',
-        }}
-      />
-
+      {/* Version History Modal (Polaris - untouched) */}
       <VersionComparisonModal
         open={versionCompareOpen}
         onClose={() => setVersionCompareOpen(false)}
+        versions={versionHistory}
+        loading={versionHistoryLoading}
+        error={versionHistoryError}
+        isSaving={isSaving}
+        productName={products.find((p) => p.id === historyModalProductId)?.name || activeProduct.name}
+        currentProductId={historyModalProductId}
+        products={products.map((p) => ({ label: p.name, value: p.id }))}
+        onProductChange={handleModalProductChange}
+        onRestoreVersion={handleRestoreVersion}
+        onCreateSnapshot={handleCreateSnapshot}
+        onLoadVersion={loadVersionDetail}
       />
-    </Page>
+
+      {/* Publish to Storefront Modal (Polaris - untouched) */}
+      <PublishToStorefrontModal
+        open={publishOpen}
+        product={{ ...activeProduct, image: activeProductImage }}
+        colorName={activeProduct.colorNames?.[selectedColorIndex] || 'Default'}
+        size={selectedSize}
+        options={activeProductOptions.map((o) => ({
+          name: o.name,
+          value: selectedOptionValues[o.name] || o.values[0],
+        }))}
+        isStoreProduct={Boolean(activeProduct.storeProductId)}
+        technique={activeProduct.compatibleTechniques?.[0] || 'dtg'}
+        customText={customText}
+        collections={collections}
+        collectionsLoading={collectionsLoading}
+        collectionsError={collectionsError}
+        collectionChoice={collectionChoice}
+        newCollectionName={newCollectionName}
+        collectionNameError={collectionNameError}
+        publishing={isPublishing}
+        variantAvailable={variantSelectionValid}
+        onCollectionChoiceChange={handleCollectionChoiceChange}
+        onNewCollectionNameChange={(v) => { setNewCollectionName(v); setCollectionNameError(''); }}
+        onRetryCollections={loadShopifyCollections}
+        onClose={() => setPublishOpen(false)}
+        onPublish={handlePublishToStorefront}
+      />
+
+      {/* Toast notifications */}
+      <CfsToast toasts={toasts} onDismiss={dismissToast} />
+    </div>
   );
 }
+
+CustomizerEditor.propTypes = {
+  storeProducts: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    name: PropTypes.string.isRequired,
+    options: PropTypes.array,
+    variants: PropTypes.array,
+  })),
+  catalogError: PropTypes.string,
+};

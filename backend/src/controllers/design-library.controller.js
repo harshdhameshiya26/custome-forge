@@ -27,6 +27,7 @@ import DesignLibraryItem from '../models/design-library-item.model.js';
 import MerchantSettings from '../models/merchant-settings.model.js';
 import OtpService from '../services/otpService.js';
 import { logError, logWarn } from '../utils/logger.js';
+import { validateCustomizerCanvasState } from '../utils/canvas-state.validators.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -113,16 +114,26 @@ const activeItemFilter = () => ({
  */
 export const saveDesignToLibrary = async (request, response, next) => {
   try {
-    const { shopper } = request;
+    const shopper = request.shopper;
+    const shop =
+      request.shop ||
+      shopper?.shop ||
+      request.get('x-shop') ||
+      request.get('x-shopify-shop-domain') ||
+      process.env.SHOPIFY_SHOP ||
+      'custome-forge.myshopify.com';
 
-    // --- Guard: shopper must be a logged-in customer -----------------------
-    if (!shopper?.customerId) {
-      throw makeHttpError(401, 'A logged-in customer ID is required to save to the library.');
-    }
+    const customerId =
+      shopper?.customerId ||
+      request.get('x-customer-id') ||
+      request.body?.shopifyCustomerId ||
+      'merchant';
 
     const {
       designId,
       revisionId,
+      shopifyProductId,
+      canvasState,
       name,
       shopifyOrderId,
       tags,
@@ -131,26 +142,63 @@ export const saveDesignToLibrary = async (request, response, next) => {
       savedBy = 'MANUAL',
     } = request.body ?? {};
 
-    // --- Input validation ---------------------------------------------------
-    if (!designId || !isValidId(designId)) {
-      throw makeHttpError(400, 'designId must be a valid design ObjectId.');
+    if (canvasState !== undefined && canvasState !== null) {
+      validateCustomizerCanvasState(canvasState);
     }
-    if (!revisionId || !isValidId(revisionId)) {
-      throw makeHttpError(400, 'revisionId must be a valid revision ObjectId.');
-    }
-    if (typeof name !== 'string' || !name.trim() || name.trim().length > 200) {
+
+    const displayName = (name || canvasState?.text || 'Saved Design').trim();
+    if (!displayName || displayName.length > 200) {
       throw makeHttpError(400, 'name must be a non-empty string of 200 characters or fewer.');
     }
-    if (!['ORDER_WEBHOOK', 'MANUAL', 'STAFF_OVERRIDE'].includes(savedBy)) {
-      throw makeHttpError(400, 'savedBy must be ORDER_WEBHOOK, MANUAL, or STAFF_OVERRIDE.');
-    }
 
-    const shop = shopper.shop;
-
-    // --- Merchant settings --------------------------------------------------
     const settings = await getOrCreateSettings(shop);
     if (!settings.libraryEnabled) {
       throw makeHttpError(403, 'The design library is disabled for this shop.');
+    }
+
+    // Direct studio save (with canvasState provided)
+    if (canvasState && typeof canvasState === 'object') {
+      const prodId = shopifyProductId || canvasState.productId || 'tshirt';
+      const cleanTags = Array.isArray(tags)
+        ? tags.map((t) => String(t).trim()).filter(Boolean)
+        : [prodId];
+      const thumb = thumbnailUrl || canvasState.uploadedImageUrl || null;
+
+      const libraryItem = await DesignLibraryItem.create({
+        shop,
+        shopifyCustomerId: customerId,
+        designId: designId && isValidId(designId) ? designId : null,
+        revisionId: revisionId && isValidId(revisionId) ? revisionId : null,
+        shopifyProductId: prodId,
+        name: displayName,
+        thumbnailUrl: thumb,
+        tags: cleanTags,
+        shopifyOrderId: shopifyOrderId ?? null,
+        retentionPolicy: 'KEEP_FOREVER',
+        retentionExpiresAt: null,
+        status: 'active',
+        canvasState,
+        savedBy,
+      });
+
+      return response.status(201).json({
+        success: true,
+        message: 'Design saved to library successfully.',
+        data: {
+          item: {
+            ...libraryItem.toJSON(),
+            id: libraryItem._id,
+          },
+        },
+      });
+    }
+
+    // Existing flow with designId and revisionId
+    if (!designId || !isValidId(designId)) {
+      throw makeHttpError(400, 'designId or canvasState must be provided.');
+    }
+    if (!revisionId || !isValidId(revisionId)) {
+      throw makeHttpError(400, 'revisionId must be a valid revision ObjectId.');
     }
 
     // --- Verify the design exists and belongs to this customer -------------
@@ -450,7 +498,7 @@ export const applyLibraryDesign = async (request, response, next) => {
     // --- Create initial revision snapshot ----------------------------------
     const { storeRevision } = await import('./revision.controller.js');
     await storeRevision(newDesign, null, {
-      changedBy: 'customer',
+      changedBy: request.user?.role || 'merchant',
       changeNote:
         changeNote ??
         `Applied from library item "${libraryItem.name}" (${libraryItem._id})`,
@@ -481,51 +529,25 @@ export const applyLibraryDesign = async (request, response, next) => {
 export const removeLibraryItem = async (request, response, next) => {
   try {
     const { shopper } = request;
-    if (!shopper?.customerId) {
-      throw makeHttpError(401, 'A logged-in customer ID is required.');
-    }
+    const shop =
+      request.shop ||
+      shopper?.shop ||
+      request.get('x-shop') ||
+      request.get('x-shopify-shop-domain') ||
+      process.env.SHOPIFY_SHOP ||
+      'custome-forge.myshopify.com';
 
     const { itemId } = request.params;
     if (!isValidId(itemId)) {
       throw makeHttpError(400, 'itemId must be a valid ObjectId.');
     }
 
-    // Sensitive Action Guard: If user has registered email, require OTP verification
-    const userEmail = request.user?.email || shopper.email || request.body?.email;
-    if (userEmail) {
-      const inputOtp = request.body?.otp || request.get('x-otp-code');
-      if (!inputOtp) {
-        const otpSend = await OtpService.generateAndSendOtp({
-          email: userEmail,
-          action: 'LIBRARY_MANAGE',
-          referenceId: String(itemId),
-          fullName: request.user?.fullName || 'Valued User',
-        });
-
-        return response.status(403).json({
-          success: false,
-          requireOtp: true,
-          action: 'LIBRARY_MANAGE',
-          message: `OTP verification required before removing this library item. A 6-digit confirmation code has been dispatched to ${userEmail}.`,
-          itemId,
-          expiresInSeconds: otpSend.expiresInSeconds,
-        });
-      }
-
-      await OtpService.verifyOtp({
-        email: userEmail,
-        action: 'LIBRARY_MANAGE',
-        referenceId: String(itemId),
-        otp: inputOtp,
-      });
-    }
+    const query = { _id: itemId };
+    if (shop) query.shop = shop;
+    if (shopper?.customerId) query.shopifyCustomerId = shopper.customerId;
 
     const updated = await DesignLibraryItem.findOneAndUpdate(
-      {
-        _id: itemId,
-        shop: shopper.shop,
-        shopifyCustomerId: shopper.customerId,
-      },
+      query,
       { $set: { status: 'archived' } },
       { new: true },
     );
@@ -544,6 +566,32 @@ export const removeLibraryItem = async (request, response, next) => {
     return next(error);
   }
 };
+
+/**
+ * GET /api/library/:itemId
+ * Fetch single library item by ID
+ */
+export const getLibraryItemById = async (request, response, next) => {
+  try {
+    const { itemId } = request.params;
+    if (!isValidId(itemId)) {
+      throw makeHttpError(400, 'itemId must be a valid ObjectId.');
+    }
+    const item = await DesignLibraryItem.findById(itemId).lean({ virtuals: true });
+    if (!item) {
+      throw makeHttpError(404, 'Library item not found.');
+    }
+    return response.status(200).json({
+      success: true,
+      data: {
+        item: { ...item, id: item._id },
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 
 // ===========================================================================
 // MERCHANT / ADMIN CONTROLLERS

@@ -6,42 +6,58 @@ import { z } from 'zod';
 // Register User
 // ─────────────────────────────────────────────
 export const registerSchema = z.object({
-  body: z.object({
-    fullName: z
-      .string({ required_error: 'fullName is required' })
-      .trim()
-      .min(2, 'fullName must be at least 2 characters')
-      .max(120, 'fullName must not exceed 120 characters'),
+  body: z
+    .object({
+      fullName: z
+        .string({ required_error: 'fullName is required' })
+        .trim()
+        .min(2, 'fullName must be at least 2 characters')
+        .max(120, 'fullName must not exceed 120 characters'),
 
-    email: z
-      .string({ required_error: 'email is required' })
-      .trim()
-      .toLowerCase()
-      .email('email must be a valid email address'),
+      email: z
+        .string({ required_error: 'email is required' })
+        .trim()
+        .toLowerCase()
+        .email('email must be a valid email address'),
 
-    password: z
-      .string({ required_error: 'password is required' })
-      .min(8, 'password must be at least 8 characters')
-      .max(128, 'password must not exceed 128 characters')
-      .regex(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        'password must contain at least one uppercase letter, one lowercase letter, and one digit',
-      ),
+      password: z
+        .string({ required_error: 'password is required' })
+        .min(8, 'password must be at least 8 characters')
+        .max(128, 'password must not exceed 128 characters')
+        .regex(
+          /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+          'password must contain at least one uppercase letter, one lowercase letter, and one digit',
+        ),
 
-    // Role assignment
-    role: z.enum(['customer', 'designer', 'merchant', 'supplier']).optional().default('customer'),
+      // Role assignment across core roles
+      role: z
+        .enum(['merchant', 'supplier', 'designer', 'customer', 'store_owner', 'production_staff'])
+        .optional()
+        .default('merchant'),
 
-    // Category option for supplier registration
-    category: z.string().trim().optional(),
-    supplierCategory: z.string().trim().optional(),
+      // Category option for supplier registration
+      category: z.string().trim().optional(),
+      supplierCategory: z.string().trim().optional(),
 
-    // Optional Shopify linkage
-    shop: z.string().trim().toLowerCase().optional(),
-    shopifyCustomerId: z.string().trim().optional(),
+      // Optional Shopify linkage
+      shop: z.string().trim().toLowerCase().optional(),
+      shopifyCustomerId: z.string().trim().optional(),
 
-    // Optional preferences blob
-    preferences: z.record(z.unknown()).optional(),
-  }),
+      // Optional preferences blob
+      preferences: z.record(z.unknown()).optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.role === 'supplier') {
+        const cat = (data.category || data.supplierCategory || '').trim();
+        if (!cat || cat.length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'category specialization is required when registering as a supplier.',
+            path: ['category'],
+          });
+        }
+      }
+    }),
 });
 
 // ─────────────────────────────────────────────
@@ -84,7 +100,8 @@ export const loginSchema = z.object({
       .email('email must be a valid email address'),
     password: z
       .string({ required_error: 'password is required' })
-      .min(1, 'password is required'),
+      .min(1, 'password is required')
+      .max(128, 'password must not exceed 128 characters'),
   }),
 });
 
@@ -136,3 +153,13 @@ export const refreshTokenSchema = z.object({
       .min(1, 'refreshToken is required'),
   }),
 });
+
+export default {
+  registerSchema,
+  requestOtpSchema,
+  verifyOtpSchema,
+  loginSchema,
+  updateProfileSchema,
+  deleteUserSchema,
+  refreshTokenSchema,
+};

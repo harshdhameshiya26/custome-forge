@@ -21,6 +21,16 @@ const customOrderSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
+    customReference: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    customerName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     customerEmail: {
       type: String,
       lowercase: true,

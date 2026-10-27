@@ -32,6 +32,11 @@ const userSchema = new mongoose.Schema(
       required: [true, 'passwordHash is required'],
       select: false,
     },
+    supplierDocumentPasswordEncrypted: {
+      type: String,
+      default: null,
+      select: false,
+    },
 
     // Verification state
     isVerified: {
@@ -40,14 +45,21 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
-    // User Role
+    // User Role: core roles are merchant, supplier, designer, customer (+ store_owner, production_staff)
     role: {
       type: String,
       enum: {
-        values: ['customer', 'designer', 'merchant', 'supplier'],
-        message: '{VALUE} is not a valid user role (allowed: customer, designer, merchant, supplier)',
+        values: [
+          'merchant',
+          'supplier',
+          'designer',
+          'customer',
+          'store_owner',
+          'production_staff',
+        ],
+        message: '{VALUE} is not a valid user role (allowed: merchant, supplier, designer, customer, store_owner, production_staff)',
       },
-      default: 'customer',
+      default: 'merchant',
       index: true,
     },
 
@@ -143,6 +155,7 @@ const userSchema = new mongoose.Schema(
         delete ret._id;
         delete ret.__v;
         delete ret.passwordHash;
+        delete ret.supplierDocumentPasswordEncrypted;
         delete ret.otp;
         delete ret.otpExpiresAt;
         delete ret.otpAttempts;
@@ -160,6 +173,7 @@ const userSchema = new mongoose.Schema(
         delete ret._id;
         delete ret.__v;
         delete ret.passwordHash;
+        delete ret.supplierDocumentPasswordEncrypted;
         delete ret.otp;
         delete ret.otpExpiresAt;
         delete ret.otpAttempts;

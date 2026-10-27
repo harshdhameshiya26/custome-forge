@@ -20,6 +20,7 @@ import CustomOrder from './models/custom-order.model.js';
 import Subscription from './models/subscription.model.js';
 import User from './models/user.model.js';
 import Schedule from './models/schedule.model.js';
+import ScheduleService from './services/scheduleService.js';
 import ActionOtp from './models/action-otp.model.js';
 import ArtworkCheck from './models/artwork-check.model.js';
 import CustomOrderTimeline from './models/custom-order-timeline.model.js';
@@ -89,6 +90,22 @@ const startServer = async () => {
       await m.createIndexes().catch(() => {});
     }
 
+    let dispatchingScheduledEmails = false;
+    const dispatchDueScheduledEmails = async () => {
+      if (dispatchingScheduledEmails) return;
+      dispatchingScheduledEmails = true;
+      try {
+        await ScheduleService.dispatchDueSupplierScheduleEmails();
+      } catch (error) {
+        logError(`[ScheduleEmailDispatcher] Unable to process due supplier emails: ${error.message}`);
+      } finally {
+        dispatchingScheduledEmails = false;
+      }
+    };
+    void dispatchDueScheduledEmails();
+    const scheduleEmailTimer = setInterval(dispatchDueScheduledEmails, 1_000);
+    scheduleEmailTimer.unref();
+
     // 3. Proactively ensure port is available
     freePort(PORT);
 
@@ -120,6 +137,7 @@ const startServer = async () => {
     // 4. Graceful shutdown handlers
     const handleShutdown = (signal) => {
       logWarn(`⚠️  Received ${signal}. Shutting down gracefully...`);
+      clearInterval(scheduleEmailTimer);
       server.close(() => {
         logSuccess('🛑 Server stopped');
         process.exit(0);
@@ -136,13 +154,13 @@ const startServer = async () => {
     process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
     process.on('unhandledRejection', (reason) => {
-      logError(`❌ Unhandled Rejection: ${reason}`);
+      logError(`❌ Unhandled Rejection: ${reason?.stack || reason}`);
     });
 
     process.on('uncaughtException', (error) => {
       // Ignore EADDRINUSE here — handled by server.on('error') above
       if (error.code !== 'EADDRINUSE') {
-        logError(`❌ Uncaught Exception: ${error.message}`);
+        logError(`❌ Uncaught Exception: ${error.stack || error.message}`);
         process.exit(1);
       }
     });

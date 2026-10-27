@@ -19,10 +19,12 @@ datasource db {
 // ============================================================
 
 enum UserRole {
-  customer
-  designer
   merchant
   supplier
+  designer
+  customer
+  store_owner
+  production_staff
 }
 
 model tbl_User {
@@ -30,8 +32,9 @@ model tbl_User {
   fullName  String
   email     String   @unique
   passwordHash String
+  supplierDocumentPasswordEncrypted String?
   isVerified   Boolean  @default(false)
-  role         UserRole @default(customer)
+  role         UserRole @default(merchant)
   supplierCategory String?
 
   // OTP for email verification / re-verification
@@ -1055,4 +1058,3 @@ model Schedule {
   @@index([status])
   @@map("tbl_Schedule")
 }
-

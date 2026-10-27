@@ -43,6 +43,7 @@ export default function ProofApproval() {
   const [selectedAngle, setSelectedAngle] = useState('front');
   const [bannerAlert, setBannerAlert] = useState(null);
   const [newCommentText, setNewCommentText] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // 2FA OTP Modal
   const [otpModalOpen, setOtpModalOpen] = useState(false);
@@ -54,18 +55,19 @@ export default function ProofApproval() {
 
   const fetchProofs = useCallback(async () => {
     try {
-      setLoading(true);
+      setRefreshing(true);
+      if (proofs.length === 0) setLoading(true);
       const res = await api.proofs.list();
       const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.items) ? res.data.items : []);
       setProofs(list);
-
     } catch (err) {
       console.warn('Could not fetch real proofs:', err.message);
       setProofs([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [proofs.length]);
 
   useEffect(() => {
     fetchProofs();
@@ -86,8 +88,8 @@ export default function ProofApproval() {
       setComments(
         list.map((c) => ({
           id: c.id || c.commentId || String(Math.random()),
-          author: c.authorName || (c.authorRole === 'MERCHANT' ? 'Merchant Staff' : 'Customer'),
-          role: (c.authorRole || 'CUSTOMER').toLowerCase(),
+          author: c.authorName || (c.authorRole === 'MERCHANT' ? 'Merchant Staff' : 'Supplier Staff'),
+          role: (c.authorRole || 'MERCHANT').toLowerCase(),
           initials: c.authorName ? c.authorName.charAt(0).toUpperCase() : 'U',
           time: c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
           content: c.content || c.message || '',
@@ -186,6 +188,7 @@ export default function ProofApproval() {
           {
             content: 'Refresh',
             onAction: fetchProofs,
+            loading: refreshing,
           },
           {
             content: 'Production Queue',
@@ -231,6 +234,7 @@ export default function ProofApproval() {
         {
           content: 'Refresh',
           onAction: fetchProofs,
+          loading: refreshing,
         },
         {
           content: 'Inspect Artwork DPI',

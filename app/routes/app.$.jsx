@@ -10,6 +10,8 @@ import OrderTracking from "../../src/pages/OrderTracking";
 import CustomerDesigns from "../../src/pages/CustomerDesigns";
 import MerchantDashboard from "../../src/pages/MerchantDashboard";
 import Billing from "../../src/pages/Billing";
+import UserPage from "../../src/pages/User";
+import ProductionScheduling from "../../src/pages/ProductionScheduling";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -30,6 +32,9 @@ export default function AppSplatRoute() {
   if (path.startsWith("/app/order") || path.startsWith("/app/tracking")) {
     return <OrderTracking />;
   }
+  if (path.startsWith("/app/production-scheduling")) {
+    return <ProductionScheduling />;
+  }
   if (path.startsWith("/app/design") || path.startsWith("/app/my-design")) {
     return <CustomerDesigns />;
   }
@@ -38,6 +43,9 @@ export default function AppSplatRoute() {
   }
   if (path.startsWith("/app/billing") || path.startsWith("/app/pricing") || path.startsWith("/app/subscription")) {
     return <Billing />;
+  }
+  if (path.startsWith("/app/user")) {
+    return <UserPage />;
   }
   if (path.startsWith("/app/dashboard") || path.startsWith("/app/catalog") || path.startsWith("/app/product")) {
     return <Dashboard />;

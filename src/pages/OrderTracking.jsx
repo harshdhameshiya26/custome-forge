@@ -1,329 +1,336 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router';
-import DesignMockupPreview from '../components/DesignMockupPreview';
+import { useCallback, useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
+import { useLocation } from 'react-router';
 import {
-  Page,
-  Layout,
-  Card,
-  BlockStack,
-  InlineStack,
-  Text,
   Badge,
-  Button,
-  ButtonGroup,
-  Box,
-  Divider,
   Banner,
+  BlockStack,
+  Box,
+  Button,
+  Card,
+  DataTable,
+  EmptyState,
+  Image,
+  InlineStack,
+  Modal,
+  Page,
   Spinner,
-  Select,
+  Text,
 } from '@shopify/polaris';
 import api from '../services/api';
 
-const DEFAULT_STAGES = [
-  { title: 'Order Placed', description: 'Your order has been received.' },
-  { title: 'Design Approved', description: 'Your design has been approved for production.' },
-  { title: 'In Production', description: 'Your order is currently in active manufacturing.' },
-  { title: 'Quality Check', description: 'Pre-flight stitch and print density inspection.' },
-  { title: 'Shipped', description: 'Carrier tracking dispatched.' },
-  { title: 'Delivered', description: 'Delivered to recipient address.' },
-];
+const EMPTY_ORDERS = [];
+const EMPTY_STATE_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 200'%3E%3Crect width='400' height='200' rx='16' fill='%23f1f2f3'/%3E%3Ccircle cx='200' cy='100' r='36' fill='%23dfe3e8'/%3E%3C/svg%3E";
 
-/**
- * OrderTracking
- * Fetches real orders from /api/orders and renders real manufacturing timelines.
- * Starts with no data (0) when no custom orders exist.
- */
-export default function OrderTracking() {
-  const navigate = useNavigate();
+const loadPreviewImage = (source) =>
+  new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Unable to load a product or artwork preview image.'));
+    image.src = source;
+  });
+
+const createProductMockup = async (productImageUrl, designImageUrl) => {
+  const [productImage, designImage] = await Promise.all([
+    loadPreviewImage(productImageUrl),
+    loadPreviewImage(designImageUrl),
+  ]);
+  const canvas = document.createElement('canvas');
+  canvas.width = 480;
+  canvas.height = 560;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Unable to prepare the product preview.');
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const productScale = Math.min(
+    canvas.width / productImage.naturalWidth,
+    canvas.height / productImage.naturalHeight,
+  );
+  const productWidth = productImage.naturalWidth * productScale;
+  const productHeight = productImage.naturalHeight * productScale;
+  context.drawImage(
+    productImage,
+    (canvas.width - productWidth) / 2,
+    (canvas.height - productHeight) / 2,
+    productWidth,
+    productHeight,
+  );
+
+  const artworkCanvas = document.createElement('canvas');
+  artworkCanvas.width = designImage.naturalWidth;
+  artworkCanvas.height = designImage.naturalHeight;
+  const artworkContext = artworkCanvas.getContext('2d', { willReadFrequently: true });
+  if (!artworkContext) throw new Error('Unable to prepare the artwork preview.');
+  artworkContext.drawImage(designImage, 0, 0);
+
+  const artwork = artworkContext.getImageData(0, 0, artworkCanvas.width, artworkCanvas.height);
+  for (let pixel = 0; pixel < artwork.data.length; pixel += 4) {
+    const red = artwork.data[pixel];
+    const green = artwork.data[pixel + 1];
+    const blue = artwork.data[pixel + 2];
+    const neutralBackground =
+      red >= 235 &&
+      red <= 249 &&
+      green >= 236 &&
+      green <= 250 &&
+      blue >= 238 &&
+      blue <= 252 &&
+      Math.max(red, green, blue) - Math.min(red, green, blue) <= 5;
+    if (neutralBackground) artwork.data[pixel + 3] = 0;
+  }
+  artworkContext.putImageData(artwork, 0, 0);
+
+  const designScale = Math.min(
+    (canvas.width * 0.38) / artworkCanvas.width,
+    (canvas.height * 0.32) / artworkCanvas.height,
+  );
+  const designWidth = artworkCanvas.width * designScale;
+  const designHeight = artworkCanvas.height * designScale;
+  context.drawImage(
+    artworkCanvas,
+    (canvas.width - designWidth) / 2,
+    canvas.height * 0.31,
+    designWidth,
+    designHeight,
+  );
+  return canvas.toDataURL('image/png');
+};
+
+export default function OrderTracking({
+  shopOrders = EMPTY_ORDERS,
+  syncWarning = null,
+}) {
   const location = useLocation();
-  const basePath = location?.pathname?.startsWith('/app') ? '/app' : '';
-
+  const shop = new URLSearchParams(location.search).get('shop') || '';
   const [orders, setOrders] = useState([]);
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [productMockups, setProductMockups] = useState({});
   const [loading, setLoading] = useState(true);
-  const [contactBanner, setContactBanner] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      const res = await api.orders.list();
-      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.items) ? res.data.items : []);
-      setOrders(list);
-
-      if (list.length > 0 && !selectedOrderId) {
-        setSelectedOrderId(list[0].id);
+      const response = await api.orders.list(shop ? { shop } : {});
+      const backendOrders = Array.isArray(response?.data) ? response.data : [];
+      const ordersById = new Map();
+      for (const order of shopOrders) {
+        ordersById.set(String(order.rawId || order.id), order);
       }
-    } catch (err) {
-      console.warn('Could not fetch real orders:', err.message);
-      setOrders([]);
+      for (const order of backendOrders) {
+        const key = String(order.rawId || order.id);
+        const current = ordersById.get(key);
+        if (!current) continue;
+        ordersById.set(key, {
+          ...current,
+          ...order,
+          customDesigns: current.customDesigns,
+        });
+      }
+      setOrders(Array.from(ordersById.values()));
+    } catch (fetchError) {
+      console.error('[CustomForge orders] Unable to load customized orders:', fetchError);
+      setOrders(shopOrders);
+      setError(fetchError.message || 'Unable to load orders. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [selectedOrderId]);
+  }, [shop, shopOrders]);
 
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
 
-  const activeOrder = useMemo(() => {
-    if (!orders || orders.length === 0) return null;
-    return orders.find((o) => o.id === selectedOrderId) || orders[0];
-  }, [orders, selectedOrderId]);
+  useEffect(() => {
+    let active = true;
+    setProductMockups({});
+    const previews = (selectedOrder?.customDesigns || []).map(async (design, index) => {
+      if (design.isPublishedCustomForgeProduct) {
+        return [index, design.imageUrl || design.productImageUrl || null];
+      }
+      if (!design.productImageUrl || !design.imageUrl) return [index, null];
+      try {
+        return [index, await createProductMockup(design.productImageUrl, design.imageUrl)];
+      } catch (previewError) {
+        console.warn('[CustomForge orders] Could not compose a product preview:', previewError.message);
+        return [index, null];
+      }
+    });
 
-  // Compute lifecycle steps dynamically based on activeOrder.status
-  const activeOrderSteps = useMemo(() => {
-    if (!activeOrder) return [];
-    const status = (activeOrder.status || '').toUpperCase();
-    let stepIndex = 0;
-    if (status.includes('PROOF') || status.includes('APPROVED')) stepIndex = 1;
-    if (status.includes('PRODUCTION')) stepIndex = 2;
-    if (status.includes('QUALITY') || status.includes('QC')) stepIndex = 3;
-    if (status.includes('SHIP')) stepIndex = 4;
-    if (status.includes('DELIVER') || status.includes('COMPLETE')) stepIndex = 5;
+    Promise.all(previews).then((entries) => {
+      if (active) setProductMockups(Object.fromEntries(entries));
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedOrder]);
 
-    return DEFAULT_STAGES.map((s, idx) => ({
-      ...s,
-      timestamp: idx <= stepIndex ? (activeOrder.date || 'Completed') : 'Pending',
-      isDone: idx < stepIndex,
-      isActive: idx === stepIndex,
-      isUpcoming: idx > stepIndex,
-    }));
-  }, [activeOrder]);
-
-  if (loading) {
-    return (
-      <Page title="Order Tracking" subtitle="Real-time order lifecycle & manufacturing timeline">
-        <Box padding="800">
-          <InlineStack align="center">
-            <Spinner accessibilityLabel="Loading order tracking" size="large" />
-          </InlineStack>
-        </Box>
-      </Page>
-    );
-  }
-
-  if (!activeOrder || orders.length === 0) {
-    return (
-      <Page
-        title="Order Tracking"
-        subtitle="Real-time order lifecycle & manufacturing timeline"
-        secondaryActions={[
-          {
-            content: 'Refresh',
-            onAction: fetchOrders,
-          },
-          {
-            content: 'Production Queue',
-            onAction: () => navigate(`${basePath}/production`),
-          },
-        ]}
-      >
-        <Card>
-          <Box padding="800">
-            <BlockStack gap="300" inlineAlign="center">
-              <Text variant="headingMd" as="h3" alignment="center">
-                No custom orders found (0)
-              </Text>
-              <Text variant="bodyMd" tone="subdued" as="p" alignment="center">
-                When a customer places a customized order in your store, its complete lifecycle timeline will appear here.
-              </Text>
-              <Button variant="primary" onClick={() => navigate(`${basePath}/editor`)}>
-                Create a Custom Design in Studio
-              </Button>
-            </BlockStack>
-          </Box>
-        </Card>
-      </Page>
-    );
-  }
-
-  const orderOptions = orders.map((o) => ({
-    label: `Order ${o.id} – ${o.customer || 'Customer'} (${o.product || 'Custom'})`,
-    value: o.id,
-  }));
+  const closeDesignModal = useCallback(() => setSelectedOrder(null), []);
 
   return (
     <Page
-      title={`Order ${activeOrder.id}`}
-      subtitle={`Placed on ${activeOrder.date || 'Recent'} | ${activeOrder.product || 'Custom Product'}`}
-      titleMetadata={<Badge tone="info">{activeOrder.status || 'Processing'}</Badge>}
+      title="Custom orders"
+      subtitle="Shopify orders containing a CustomForge design, including payment status"
       primaryAction={{
-        content: 'View in Store',
-        onAction: () => {},
+        content: 'Refresh',
+        onAction: fetchOrders,
+        loading,
       }}
-      secondaryActions={[
-        {
-          content: 'Refresh',
-          onAction: fetchOrders,
-        },
-        {
-          content: 'Production Queue',
-          onAction: () => navigate(`${basePath}/production`),
-        },
-      ]}
     >
-      <BlockStack gap="500">
-        {orders.length > 1 && (
+      <BlockStack gap="400">
+        {syncWarning && (
+          <Banner tone="warning">
+            <Text as="p">{syncWarning}</Text>
+          </Banner>
+        )}
+        {error && (
           <Card>
-            <InlineStack align="space-between" alignBlock="center">
-              <Text variant="bodyMd" fontWeight="semibold" as="span">Select Order to Track:</Text>
-              <Box minWidth="300px">
-                <Select
-                  label="Select Order"
-                  labelHidden
-                  options={orderOptions}
-                  value={selectedOrderId || activeOrder.id}
-                  onChange={setSelectedOrderId}
-                />
-              </Box>
-            </InlineStack>
+            <Box padding="400">
+              <BlockStack gap="300">
+                <Text as="p" variant="bodyMd" tone="critical">{error}</Text>
+                <Button onClick={fetchOrders}>Retry</Button>
+              </BlockStack>
+            </Box>
           </Card>
         )}
 
-        {contactBanner && (
-          <Banner
-            title="Support Request Received"
-            tone="info"
-            onDismiss={() => setContactBanner(false)}
-          >
-            <Text as="p" variant="bodyMd">
-              Our merchant production desk has been alerted regarding Order {activeOrder.id}. We will reply within 1 business hour.
-            </Text>
-          </Banner>
-        )}
-
-        {/* ── Main Two-Column Layout ── */}
-        <Layout>
-          {/* LEFT: Stepper Timeline */}
-          <Layout.Section>
+        {loading ? (
+          <Card>
+            <Box padding="800">
+              <InlineStack align="center">
+                <Spinner accessibilityLabel="Loading customized Shopify orders" size="large" />
+              </InlineStack>
+            </Box>
+          </Card>
+        ) : orders.length === 0 ? (
+          error ? null : (
             <Card>
-              <BlockStack gap="500">
-                <Text variant="headingMd" as="h2">Order Fulfillment Lifecycle</Text>
-
-                <BlockStack gap="400">
-                  {activeOrderSteps.map((step, idx) => (
-                    <Card
-                      key={step.title}
-                      background={
-                        step.isActive
-                          ? 'bg-surface-secondary'
-                          : step.isDone
-                          ? 'bg-surface'
-                          : 'bg-surface'
-                      }
-                    >
-                      <InlineStack align="space-between" alignBlock="start">
-                        <InlineStack gap="300" alignBlock="start">
-                          <Badge
-                            tone={step.isDone ? 'success' : step.isActive ? 'magic' : 'subdued'}
-                            size="large"
-                          >
-                            {step.isDone ? '✓' : `${idx + 1}`}
-                          </Badge>
-
-                          <BlockStack gap="100">
-                            <InlineStack gap="200" alignBlock="center">
-                              <Text
-                                variant="bodyMd"
-                                fontWeight={step.isActive ? 'bold' : 'semibold'}
-                                as="span"
-                              >
-                                {step.title}
-                              </Text>
-                              {step.isActive && <Badge tone="magic" size="small">Active Now</Badge>}
-                              {step.isDone && <Badge tone="success" size="small">Completed</Badge>}
-                            </InlineStack>
-
-                            <Text variant="bodySm" tone="subdued" as="p">
-                              {step.description}
-                            </Text>
-                          </BlockStack>
-                        </InlineStack>
-
-                        <Text
-                          variant="bodySm"
-                          tone={step.isUpcoming ? 'subdued' : 'default'}
-                          fontWeight={step.isActive ? 'semibold' : 'regular'}
-                          as="span"
-                        >
-                          {step.timestamp}
-                        </Text>
-                      </InlineStack>
-                    </Card>
-                  ))}
-                </BlockStack>
-              </BlockStack>
+              <EmptyState
+                heading="No custom orders yet"
+                image={EMPTY_STATE_IMAGE}
+                action={{ content: 'Refresh orders', onAction: fetchOrders }}
+              >
+                Orders appear here when a customer purchases a product published
+                through CustomForge.
+              </EmptyState>
             </Card>
-          </Layout.Section>
-
-          {/* RIGHT: Product Details Card & Help Card */}
-          <Layout.Section variant="oneThird">
-            <BlockStack gap="400">
-              <Card>
-                <BlockStack gap="300">
-                  <Text variant="headingMd" as="h2">Product Details</Text>
-
-                  <Box minHeight="160px" borderRadius="200" overflowX="hidden" overflowY="hidden">
-                    <DesignMockupPreview
-                      productType={activeOrder.product || 'T-Shirt'}
-                      graphicText={activeOrder.customer || 'Custom Design'}
-                      height={160}
-                      showGuides={false}
-                    />
-                  </Box>
-
-                  <BlockStack gap="150">
-                    <Text variant="headingSm" as="h3" fontWeight="bold">
-                      {activeOrder.product || 'Custom Apparel'}
-                    </Text>
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      Customer: {activeOrder.customer || 'Direct Order'}
-                    </Text>
-                  </BlockStack>
-
-                  <Divider />
-
-                  <BlockStack gap="150">
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm" tone="subdued" as="span">Technique</Text>
-                      <Text variant="bodySm" fontWeight="semibold" as="span">{activeOrder.technique || 'DTG Print'}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm" tone="subdued" as="span">Assigned To</Text>
-                      <Text variant="bodySm" fontWeight="semibold" as="span">{activeOrder.supplier || 'Production Floor'}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodySm" tone="subdued" as="span">Status</Text>
-                      <Text variant="bodySm" fontWeight="semibold" as="span">{activeOrder.status || 'Active'}</Text>
-                    </InlineStack>
-                  </BlockStack>
-
-                  <Divider />
-
-                  <Button
-                    variant="primary"
-                    onClick={() => navigate(`${basePath}/editor`)}
-                  >
-                    View in Studio
-                  </Button>
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="250">
-                  <Text variant="headingMd" as="h2">Help</Text>
-                  <Text variant="bodySm" tone="subdued" as="p">
-                    Have questions about this production run? Contact our merchant support desk.
+          )
+        ) : (
+          <Card>
+            <DataTable
+              columnContentTypes={['text', 'text', 'text', 'text', 'text']}
+              headings={['Order', 'Custom product', 'Customer', 'Payment', '']}
+              rows={orders.map((order) => [
+                <BlockStack gap="100" key={`order-${order.rawId || order.id}`}>
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    {order.referenceNumber
+                      ? `CustomForge ${order.referenceNumber}`
+                      : `Order ${order.id}`}
                   </Text>
-                  <Button onClick={() => setContactBanner(true)}>
-                    Contact Support
-                  </Button>
-                </BlockStack>
-              </Card>
-            </BlockStack>
-          </Layout.Section>
-        </Layout>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {order.date}
+                  </Text>
+                </BlockStack>,
+                <Text as="span" key={`product-${order.rawId || order.id}`}>
+                  {order.product || order.customDesigns?.map((design) => design.title).join(', ')}
+                </Text>,
+                <BlockStack gap="100" key={`customer-${order.rawId || order.id}`}>
+                  <Text as="span">
+                    {order.customerName || order.customer || 'Customer'}
+                  </Text>
+                  {order.customerEmail && (
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {order.customerEmail}
+                    </Text>
+                  )}
+                </BlockStack>,
+                <Badge
+                  key={`payment-${order.rawId || order.id}`}
+                  tone={String(order.financialStatus || '').toLowerCase() === 'paid'
+                    ? 'success'
+                    : 'attention'}
+                >
+                  {String(order.financialStatus || 'Payment pending')
+                    .replaceAll('_', ' ')
+                    .replace(/\b\w/g, (character) => character.toUpperCase())}
+                </Badge>,
+                <Button
+                  key={`view-${order.rawId || order.id}`}
+                  onClick={() => setSelectedOrder(order)}
+                  disabled={!order.customDesigns?.length}
+                >
+                  View
+                </Button>,
+              ])}
+              hoverable
+              hasZebraStripingOnData
+              verticalAlign="middle"
+            />
+          </Card>
+        )}
       </BlockStack>
+
+      <Modal
+        open={Boolean(selectedOrder)}
+        onClose={closeDesignModal}
+        title={selectedOrder ? `Design for order ${selectedOrder.id}` : 'Custom design'}
+        primaryAction={{
+          content: 'Close',
+          onAction: closeDesignModal,
+        }}
+      >
+        <Modal.Section>
+          {selectedOrder && (
+            <BlockStack gap="400">
+              <Text as="p" variant="bodyMd">
+                {selectedOrder.customerName || selectedOrder.customer || 'Customer'}
+                {selectedOrder.customerEmail ? ` · ${selectedOrder.customerEmail}` : ''}
+              </Text>
+              {(selectedOrder.customDesigns || []).map((design, index) => (
+                <Card key={`${selectedOrder.rawId}-${index}`}>
+                  <Box padding="400">
+                    <BlockStack gap="300">
+                      <Text as="h3" variant="headingSm">{design.title || selectedOrder.product}</Text>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Quantity: {design.quantity || 1}
+                        {design.variantTitle ? ` · Variant: ${design.variantTitle}` : ''}
+                      </Text>
+                      {productMockups[index] ? (
+                        <Image
+                          source={productMockups[index]}
+                          alt={`${design.title || selectedOrder.product} customized with the customer's design`}
+                          width={480}
+                          height={560}
+                        />
+                      ) : (
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          The combined product preview could not be generated. Refresh the order to try loading it again.
+                        </Text>
+                      )}
+                      {Object.entries(design.properties || {}).map(([label, value]) => (
+                        value !== '' && value !== null && value !== undefined && (
+                          <Text as="p" variant="bodySm" key={label}>
+                            {label}: {String(value)}
+                          </Text>
+                        )
+                      ))}
+                    </BlockStack>
+                  </Box>
+                </Card>
+              ))}
+            </BlockStack>
+          )}
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }
+
+OrderTracking.propTypes = {
+  shopOrders: PropTypes.arrayOf(PropTypes.object),
+  syncWarning: PropTypes.string,
+};

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import whiteTshirtImg from '../assets/mockups/white_tshirt.jpg';
 import blackTshirtImg from '../assets/mockups/black_tshirt.jpg';
 import hoodieImg from '../assets/mockups/hoodie.jpg';
@@ -47,6 +47,13 @@ function TemplateVectorGraphic({ templateName, color = '#111827', width = 120, h
     );
   }
 
+  TemplateVectorGraphic.propTypes = {
+    templateName: PropTypes.string,
+    color: PropTypes.string,
+    width: PropTypes.number,
+    height: PropTypes.number,
+  };
+
   if (norm.includes('beach') || norm.includes('sunset')) {
     return (
       <svg width={width} height={height} viewBox="0 0 140 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
@@ -70,6 +77,36 @@ function TemplateVectorGraphic({ templateName, color = '#111827', width = 120, h
         <line x1="52" y1="78" x2="52" y2="85" stroke={color} strokeWidth="3" />
         <line x1="60" y1="78" x2="60" y2="85" stroke={color} strokeWidth="3" />
         <line x1="68" y1="78" x2="68" y2="85" stroke={color} strokeWidth="3" />
+      </svg>
+    );
+  }
+
+  if (norm.includes('love') || norm.includes('heart')) {
+    return (
+      <svg width={width} height={height} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
+        <path d="M60 88 15 47C-7 24 25-4 49 17l11 11 11-11C95-4 127 24 105 47L60 88Z" />
+      </svg>
+    );
+  }
+
+  if (norm.includes('christmas')) {
+    return (
+      <svg width={width} height={height} viewBox="0 0 120 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="m60 8-30 38h17L22 72h76L73 46h17L60 8Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
+        <path d="M53 72h14v24H53z" fill={color} />
+        <circle cx="60" cy="12" r="5" fill={color} />
+      </svg>
+    );
+  }
+
+  if (norm.includes('pet')) {
+    return (
+      <svg width={width} height={height} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="60" cy="65" rx="23" ry="20" />
+        <ellipse cx="29" cy="39" rx="10" ry="14" transform="rotate(-25 29 39)" />
+        <ellipse cx="48" cy="23" rx="10" ry="14" transform="rotate(-10 48 23)" />
+        <ellipse cx="72" cy="23" rx="10" ry="14" transform="rotate(10 72 23)" />
+        <ellipse cx="91" cy="39" rx="10" ry="14" transform="rotate(25 91 39)" />
       </svg>
     );
   }
@@ -139,12 +176,20 @@ const PRINT_ZONES = {
     height: '52%',
     label: 'Back Plate Zone (70 × 110 mm)',
   },
+  general: {
+    top: '20%',
+    left: '20%',
+    width: '60%',
+    height: '60%',
+    label: 'Main Print Zone',
+  },
 };
 
 export default function DesignMockupPreview({
   productId,
   productType,
   productImage,
+  printArea,
   productColor = '#ffffff',
   productColorName = '',
   productLabel = '',
@@ -173,14 +218,13 @@ export default function DesignMockupPreview({
   textX = 0,
   textY,
   textRotation = 0,
+  additionalTextLayers = [],
+  additionalGraphicLayers = [],
   // Component layout
   size = 'md',
   height,
   angle,
-  showGuides: initialShowGuides = false,
 }) {
-  const [showGuides, setShowGuides] = useState(false);
-
   // Normalize text from any prop name used across screens
   const displayText = (customText || designText || graphicText || '').trim();
   const hasImage = Boolean(designImage || uploadedFileName);
@@ -197,10 +241,14 @@ export default function DesignMockupPreview({
 
   // Determine product category
   const rawId = (productId || productType || productLabel || '').toLowerCase();
-  let resolvedCategory = 'tshirt';
+  let resolvedCategory = 'general';
   if (rawId.includes('hoodie')) resolvedCategory = 'hoodie';
   else if (rawId.includes('mug') || rawId.includes('drinkware')) resolvedCategory = 'mug';
   else if (rawId.includes('phone') || rawId.includes('case')) resolvedCategory = 'phone_case';
+  else if (/\b(t-?shirts?|shirts?|tops?)\b/i.test(productType || '')) resolvedCategory = 'tshirt';
+  else if (/\b(hoodies?|sweatshirts?)\b/i.test(productType || '')) resolvedCategory = 'hoodie';
+  else if (/\b(mugs?|drinkware|glassware|bottles?)\b/i.test(productType || '')) resolvedCategory = 'mug';
+  else if (/\b(phone|tablet)\s*cases?\b/i.test(productType || '')) resolvedCategory = 'phone_case';
 
   // Determine garment color state
   const colorStr = (productColor || '').toLowerCase();
@@ -216,12 +264,13 @@ export default function DesignMockupPreview({
 
   const isNavy = colorStr === '#1e3a8a' || colorNameStr.includes('navy');
   const isCrimson = colorStr === '#991b1b' || colorNameStr.includes('crimson') || colorNameStr.includes('red');
-  const isHeatherGrey = colorStr === '#475569' || colorNameStr.includes('grey') || colorNameStr.includes('gray');
   const isForestGreen = colorStr === '#15803d' || colorNameStr.includes('green');
 
   // Choose appropriate clean base product image
-  let baseMockupImg = whiteTshirtImg;
-  if (resolvedCategory === 'tshirt') {
+  let baseMockupImg = productImage || whiteTshirtImg;
+  if (productImage) {
+    baseMockupImg = productImage;
+  } else if (resolvedCategory === 'tshirt') {
     if (isDarkColor) {
       baseMockupImg = blackTshirtImg;
     } else {
@@ -252,10 +301,17 @@ export default function DesignMockupPreview({
     textStroke = isDarkColor ? '1.2px #ffffff' : '1.2px #111827';
   }
 
-  const zone = PRINT_ZONES[resolvedCategory] || PRINT_ZONES.tshirt;
+  const defaultZone = PRINT_ZONES[resolvedCategory] || PRINT_ZONES.general;
+  const zone = printArea
+    ? {
+      ...defaultZone,
+      top: `${printArea.top * 100}%`,
+      left: `${printArea.left * 100}%`,
+      width: `${printArea.width * 100}%`,
+      height: `${printArea.height * 100}%`,
+    }
+    : defaultZone;
   const containerHeight = height ? (typeof height === 'number' ? `${height}px` : height) : HEIGHT_PRESETS[size] || HEIGHT_PRESETS.md;
-  const scaleRatio = Math.max(0.4, Math.min(scale / 100, 1.6));
-
   return (
     <div
       style={{
@@ -289,7 +345,7 @@ export default function DesignMockupPreview({
       />
 
       {/* ── DYNAMIC COLOR TINT OVERLAY ACROSS ALL PRODUCTS ── */}
-      {resolvedCategory === 'tshirt' && (isNavy || isCrimson) && (
+      {!productImage && resolvedCategory === 'tshirt' && (isNavy || isCrimson) && (
         <div
           style={{
             position: 'absolute',
@@ -303,7 +359,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {resolvedCategory === 'hoodie' && isForestGreen && (
+      {!productImage && resolvedCategory === 'hoodie' && isForestGreen && (
         <div
           style={{
             position: 'absolute',
@@ -317,7 +373,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {resolvedCategory === 'hoodie' && isDarkColor && (
+      {!productImage && resolvedCategory === 'hoodie' && isDarkColor && (
         <div
           style={{
             position: 'absolute',
@@ -331,7 +387,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {resolvedCategory === 'mug' && colorStr === '#0284c7' && (
+      {!productImage && resolvedCategory === 'mug' && colorStr === '#0284c7' && (
         <div
           style={{
             position: 'absolute',
@@ -345,7 +401,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {resolvedCategory === 'phone_case' && (colorStr === '#d97706' || colorNameStr.includes('amber')) && (
+      {!productImage && resolvedCategory === 'phone_case' && (colorStr === '#d97706' || colorNameStr.includes('amber')) && (
         <div
           style={{
             position: 'absolute',
@@ -417,6 +473,28 @@ export default function DesignMockupPreview({
             )}
           </div>
         )}
+
+        {additionalGraphicLayers.filter((layer) => layer.visible !== false).map((layer) => (
+          <div
+            key={layer.id}
+            aria-label={`${layer.name || 'Graphic layer'} sticker`}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: `translate(calc(-50% + ${Number(layer.x) || 0}px), calc(-50% + ${Number(layer.y) || 0}px)) rotate(${Number(layer.rotation) || 0}deg)`,
+              zIndex: 3,
+              pointerEvents: 'none',
+            }}
+          >
+            <TemplateVectorGraphic
+              templateName={layer.name}
+              color={layer.color || '#111827'}
+              width={Math.round(100 * (Number(layer.scale) || 55) / 100)}
+              height={Math.round(80 * (Number(layer.scale) || 55) / 100)}
+            />
+          </div>
+        ))}
 
         {/* ── INDEPENDENT TYPOGRAPHIC TEXT LAYER ── */}
         {displayText && (
@@ -499,6 +577,32 @@ export default function DesignMockupPreview({
             )}
           </div>
         )}
+
+        {additionalTextLayers.filter((layer) => layer.visible !== false).map((layer) => (
+          <div
+            key={layer.id}
+            aria-label={`${layer.name || 'Text layer'}: ${layer.text}`}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: `translate(calc(-50% + ${Number(layer.x) || 0}px), calc(-50% + ${Number(layer.y) || 0}px)) rotate(${Number(layer.rotation) || 0}deg)`,
+              zIndex: 4,
+              maxWidth: '95%',
+              color: layer.color || '#111827',
+              fontFamily: `${layer.font || 'Poppins'}, sans-serif`,
+              fontSize: `${Math.max(10, Math.round(15 * (Number(layer.scale) || 100) / 100))}px`,
+              fontWeight: layer.bold === false ? 500 : 700,
+              textAlign: 'center',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+              pointerEvents: 'none',
+              mixBlendMode: isDarkColor ? 'normal' : 'multiply',
+            }}
+          >
+            {layer.text}
+          </div>
+        ))}
       </div>
 
       {/* ── TOP-RIGHT STUDIO OVERLAYS & CONTROLS ── */}
@@ -565,3 +669,64 @@ export default function DesignMockupPreview({
     </div>
   );
 }
+
+DesignMockupPreview.propTypes = {
+  productId: PropTypes.string,
+  productType: PropTypes.string,
+  productImage: PropTypes.string,
+  printArea: PropTypes.shape({
+    top: PropTypes.number,
+    left: PropTypes.number,
+    width: PropTypes.number,
+    height: PropTypes.number,
+  }),
+  productColor: PropTypes.string,
+  productColorName: PropTypes.string,
+  productLabel: PropTypes.string,
+  customText: PropTypes.string,
+  designText: PropTypes.string,
+  graphicText: PropTypes.string,
+  designImage: PropTypes.string,
+  uploadedFileName: PropTypes.string,
+  fontFamily: PropTypes.string,
+  textColor: PropTypes.string,
+  isBold: PropTypes.bool,
+  isItalic: PropTypes.bool,
+  isUnderline: PropTypes.bool,
+  alignment: PropTypes.oneOf(['left', 'center', 'right']),
+  effect: PropTypes.string,
+  scale: PropTypes.number,
+  imageScale: PropTypes.number,
+  imageX: PropTypes.number,
+  imageY: PropTypes.number,
+  imageRotation: PropTypes.number,
+  textScale: PropTypes.number,
+  textX: PropTypes.number,
+  textY: PropTypes.number,
+  textRotation: PropTypes.number,
+  additionalTextLayers: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    name: PropTypes.string,
+    text: PropTypes.string,
+    color: PropTypes.string,
+    font: PropTypes.string,
+    scale: PropTypes.number,
+    x: PropTypes.number,
+    y: PropTypes.number,
+    rotation: PropTypes.number,
+    visible: PropTypes.bool,
+  })),
+  additionalGraphicLayers: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    name: PropTypes.string,
+    color: PropTypes.string,
+    scale: PropTypes.number,
+    x: PropTypes.number,
+    y: PropTypes.number,
+    rotation: PropTypes.number,
+    visible: PropTypes.bool,
+  })),
+  size: PropTypes.string,
+  height: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  angle: PropTypes.string,
+};

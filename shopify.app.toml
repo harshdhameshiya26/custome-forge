@@ -1,16 +1,23 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "8ceda39ea00dc2a44a44e7fe36f5af71"
+name = "CustomeForge"
 application_url = "https://example.com"
 embedded = true
-name = "CustomeForge"
 
-[access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products,read_orders,write_orders,read_customers,write_customers,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+[build]
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2027-01"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders"
+  topics = [ "orders/create", "orders/paid" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/uninstalled"
@@ -20,18 +27,14 @@ api_version = "2027-01"
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_fulfillments,read_merchant_managed_fulfillment_orders,read_orders,read_products,read_publications,write_app_proxy,write_customers,write_files,write_fulfillments,write_merchant_managed_fulfillment_orders,write_orders,write_products,write_publications"
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/compliance"
-  compliance_topics = [
-    "customers/data_request",
-    "customers/redact",
-    "shop/redact"
-  ]
+[app_proxy]
+url = "/apps/customforge"
+prefix = "apps"
+subpath = "customforge"
 
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]
-
-[build]
-include_config_on_deploy = true
-automatically_update_urls_on_dev = true

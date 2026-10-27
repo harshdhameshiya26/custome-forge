@@ -8,12 +8,9 @@ export {
   authenticateToken,
   verifyRole,
   requireMerchant,
-  requireDesigner,
   requireSupplier,
-  requireCustomer,
 } from './auth.middleware.js';
 
 export default {
   verifyActiveSubscription: (await import('./subscriptionValidator.js')).verifyActiveSubscription,
 };
-

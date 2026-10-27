@@ -58,7 +58,7 @@ const computeFingerprint = (canvasState) => {
  * Atomically snapshot the current design state as a DesignRevision.
  * Uses upsert so a concurrent save of the same version is a no-op.
  */
-const storeRevision = async (design, session, { changedBy = 'customer', changeNote = null } = {}) => {
+const storeRevision = async (design, session, { changedBy = 'merchant', changeNote = null } = {}) => {
   const assetFingerprint = computeFingerprint(design.canvasState);
 
   await DesignRevision.findOneAndUpdate(
@@ -69,6 +69,7 @@ const storeRevision = async (design, session, { changedBy = 'customer', changeNo
         shop:                  design.shop,
         version:               design.version,
         productId:             design.productId,
+        productVariantId:       design.productVariantId || null,
         canvasState:           design.canvasState,
         thumbnailUrl:          design.thumbnailUrl,
         assetFingerprint,
@@ -119,18 +120,29 @@ export const listDesignRevisions = async (request, response, next) => {
     const page  = Math.max(Number(request.query.page ?? 1), 1);
 
     const design = await getDesignByOwner(request.params.id, request.shopper)
-      .select('_id shop')
+      .select('_id shop productId productVariantId')
       .lean();
     if (!design) throw makeHttpError(404, 'Design not found.');
 
-    const filter = { designId: design._id, shop: design.shop };
+    const productId =
+      typeof request.query.productId === 'string' && request.query.productId.trim()
+        ? request.query.productId.trim()
+        : design.productId;
+    const productVariantId =
+      typeof request.query.productVariantId === 'string'
+        ? request.query.productVariantId.trim() || null
+        : design.productVariantId || null;
+    const filter = {
+      designId: design._id,
+      shop: design.shop,
+      productId,
+      productVariantId,
+    };
     const [revisions, total] = await Promise.all([
       DesignRevision.find(filter)
         .sort({ version: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        // Omit heavy canvasState from the list view
-        .select('-canvasState')
         .lean(),
       DesignRevision.countDocuments(filter),
     ]);
@@ -163,14 +175,24 @@ export const getRevisionByVersion = async (request, response, next) => {
       throw makeHttpError(400, 'version must be a positive integer.');
 
     const design = await getDesignByOwner(id, request.shopper)
-      .select('_id shop')
+      .select('_id shop productId productVariantId')
       .lean();
     if (!design) throw makeHttpError(404, 'Design not found.');
 
+    const productId =
+      typeof request.query.productId === 'string' && request.query.productId.trim()
+        ? request.query.productId.trim()
+        : design.productId;
+    const productVariantId =
+      typeof request.query.productVariantId === 'string'
+        ? request.query.productVariantId.trim() || null
+        : design.productVariantId || null;
     const revision = await DesignRevision.findOne({
       designId: design._id,
       shop:     design.shop,
       version,
+      productId,
+      productVariantId,
     }).lean();
     if (!revision) throw makeHttpError(404, 'Revision not found.');
 
@@ -202,13 +224,27 @@ export const compareRevisions = async (request, response, next) => {
       throw makeHttpError(400, 'versionA and versionB must be different.');
 
     const design = await getDesignByOwner(id, request.shopper)
-      .select('_id shop')
+      .select('_id shop productId productVariantId')
       .lean();
     if (!design) throw makeHttpError(404, 'Design not found.');
 
+    const productId =
+      typeof request.query.productId === 'string' && request.query.productId.trim()
+        ? request.query.productId.trim()
+        : design.productId;
+    const productVariantId =
+      typeof request.query.productVariantId === 'string'
+        ? request.query.productVariantId.trim() || null
+        : design.productVariantId || null;
+    const revisionScope = {
+      designId: design._id,
+      shop: design.shop,
+      productId,
+      productVariantId,
+    };
     const [revA, revB] = await Promise.all([
-      DesignRevision.findOne({ designId: design._id, shop: design.shop, version: versionA }).lean(),
-      DesignRevision.findOne({ designId: design._id, shop: design.shop, version: versionB }).lean(),
+      DesignRevision.findOne({ ...revisionScope, version: versionA }).lean(),
+      DesignRevision.findOne({ ...revisionScope, version: versionB }).lean(),
     ]);
 
     if (!revA) throw makeHttpError(404, `Revision v${versionA} not found.`);
@@ -309,14 +345,14 @@ export const approveRevision = async (request, response, next) => {
 
     // 1. Approver identity & role check
     const approverId = request.shopper?.customerId || request.user?.shopifyCustomerId || (request.user?._id ? String(request.user._id) : null) || request.body.approverId;
-    const approverRole = request.user?.role || request.body.approverRole || 'customer';
+    const approverRole = request.user?.role || request.body.approverRole || 'merchant';
     const approverEmail = request.user?.email || request.shopper?.email || request.body.email;
 
     if (!approverId) {
       throw makeHttpError(401, 'User not logged in. An authenticated user is required to approve revisions.');
     }
-    if (!['customer', 'staff', 'merchant', 'admin'].includes(approverRole)) {
-      throw makeHttpError(403, "Forbidden: approverRole must be 'customer', 'staff', 'merchant', or 'admin'.");
+    if (!['merchant', 'staff', 'admin'].includes(approverRole)) {
+      throw makeHttpError(403, "Forbidden: approverRole must be 'merchant', 'staff', or 'admin'.");
     }
 
     // 2. Sensitive Action Guard: Require explicit email OTP verification
@@ -352,7 +388,7 @@ export const approveRevision = async (request, response, next) => {
 
     await runInTransaction(async (session) => {
       const design = await getDesignByOwner(id, request.shopper)
-        .select('_id shop status')
+        .select('_id shop status productId productVariantId')
         .session(session);
       if (!design) throw makeHttpError(404, 'Design not found.');
 
@@ -360,6 +396,8 @@ export const approveRevision = async (request, response, next) => {
         designId: design._id,
         shop:     design.shop,
         version,
+        productId: design.productId,
+        productVariantId: design.productVariantId || null,
       }).session(session);
 
       if (!revision) throw makeHttpError(404, `Revision v${version} not found.`);
@@ -516,10 +554,13 @@ export const restoreDesignRevision = async (request, response, next) => {
         designId: design._id,
         shop:     design.shop,
         version,
+        productId: design.productId,
+        productVariantId: design.productVariantId || null,
       }).session(session);
       if (!revision) throw makeHttpError(404, 'Revision not found.');
 
       design.productId   = revision.productId;
+      design.productVariantId = revision.productVariantId || null;
       design.canvasState = revision.canvasState;
       design.markModified('canvasState');
       design.thumbnailUrl = revision.thumbnailUrl;
@@ -528,7 +569,7 @@ export const restoreDesignRevision = async (request, response, next) => {
       await design.save({ session });
 
       await storeRevision(design, session, {
-        changedBy:  request.shopper?.customerId ? 'customer' : 'staff',
+        changedBy: request.user?.role || 'merchant',
         changeNote: changeNote
           ? `Restored from v${version}: ${changeNote}`
           : `Restored from v${version}`,
@@ -562,7 +603,7 @@ export const verifyRevisionIntegrity = async (request, response, next) => {
       throw makeHttpError(400, 'version must be a positive integer.');
 
     const design = await getDesignByOwner(id, request.shopper)
-      .select('_id shop')
+      .select('_id shop productId productVariantId')
       .lean();
     if (!design) throw makeHttpError(404, 'Design not found.');
 
@@ -570,6 +611,8 @@ export const verifyRevisionIntegrity = async (request, response, next) => {
       designId: design._id,
       shop:     design.shop,
       version,
+      productId: design.productId,
+      productVariantId: design.productVariantId || null,
     }).lean();
     if (!revision) throw makeHttpError(404, 'Revision not found.');
 

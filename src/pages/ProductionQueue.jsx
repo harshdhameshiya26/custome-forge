@@ -46,6 +46,7 @@ export default function ProductionQueue() {
 
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedTabIndex, setSelectedTabIndex] = useState(0);
   const [selectedJob, setSelectedJob] = useState(null);
   const [editTeam, setEditTeam] = useState('DTG Team');
@@ -54,18 +55,19 @@ export default function ProductionQueue() {
 
   const fetchQueue = useCallback(async () => {
     try {
-      setLoading(true);
+      setRefreshing(true);
+      if (queue.length === 0) setLoading(true);
       const res = await api.production.list();
       const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.items) ? res.data.items : []);
       setQueue(list);
-
     } catch (err) {
       console.warn('Could not fetch real production queue:', err.message);
       setQueue([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [queue.length]);
 
   useEffect(() => {
     fetchQueue();
@@ -178,6 +180,7 @@ export default function ProductionQueue() {
         {
           content: 'Refresh',
           onAction: fetchQueue,
+          loading: refreshing,
         },
         {
           content: 'Customizer Studio',

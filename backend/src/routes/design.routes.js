@@ -62,7 +62,7 @@ router.get('/resume/:id', resumeDesign);
 router.post('/:id/share-token', generateShareToken);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Designer & Merchant Workflow Endpoints (Templates & Canvas Review)
+// Merchant Workflow Endpoints (Templates & Canvas Review)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/templates', listTemplates);
 router.get('/templates/:id', getTemplateById);
@@ -70,21 +70,21 @@ router.post(
   '/templates',
   authenticateToken,
   requireVerifiedUser,
-  verifyRole(['designer', 'merchant']),
+  verifyRole(['merchant', 'designer']),
   createTemplate,
 );
 router.patch(
   '/:id/review',
   authenticateToken,
   requireVerifiedUser,
-  verifyRole(['designer', 'merchant']),
+  verifyRole(['merchant', 'designer']),
   reviewAndModifyDesign,
 );
 router.put(
   '/:id/review',
   authenticateToken,
   requireVerifiedUser,
-  verifyRole(['designer', 'merchant']),
+  verifyRole(['merchant', 'designer']),
   reviewAndModifyDesign,
 );
 

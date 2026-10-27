@@ -83,6 +83,16 @@ The app stores Shopify sessions in MongoDB through Prisma. The standalone Expres
 
 MongoDB must support transactions for atomic design saves and guest-to-customer claims. MongoDB Atlas supports transactions. MongoDB does not support Prisma migrations; the setup script uses `prisma db push` to synchronize the Prisma schema.
 
+#### Supplier schedules and transactional email
+
+Supplier registration requires a password and keeps the account inactive until its email OTP is verified. Passwords are stored as bcrypt hashes for authentication. Supplier schedule notifications include a regular, unencrypted PDF with schedule details and design previews; keep supplier email addresses and attachments appropriately protected.
+
+Configure outbound mail with either `SENDGRID_API_KEY` (SendGrid SMTP) or `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, and `EMAIL_PASS`. Set `EMAIL_FROM_ADDRESS` to a sender address on a domain verified with your email provider; optionally set `EMAIL_FROM_NAME` and `EMAIL_REPLY_TO`. Production does not fall back to a test mailbox. Email code can provide authenticated transport and clean message formatting, but inbox placement cannot be guaranteed by application code: configure and monitor the provider's SPF, DKIM, and DMARC records and sender reputation.
+
+Confirmed schedules require at least three customized products. Supplier notifications are queued until the selected production date and time (in the creator's local timezone), then sent by the standalone backend's due-email worker. Keep `backend:start` or `backend:dev` running for scheduled notifications to be dispatched. Emails contain a regular, unencrypted PDF attachment with the design details and Shopify-hosted images; design previews are not embedded in the email body.
+
+Products published through CustomForge are tagged `customforge-app-published-design-v1`; the Orders page uses that marker to include only orders containing those products. The CustomForge product-customizer Shopify theme extension has been removed.
+
 #### Design REST API
 
 The standalone backend exposes direct REST endpoints under `/api/designs`. You can call them directly from your frontend or API client (e.g. Postman) without any proxy:
@@ -92,11 +102,11 @@ The standalone backend exposes direct REST endpoints under `/api/designs`. You c
 | `POST` | `/api/designs/sessions` | Create a guest session; returns a bearer session token. |
 | `POST` | `/api/designs/sessions/claim` | Transfer guest designs to a customer; send customer ID and guest bearer token. |
 | `DELETE` | `/api/designs/sessions/current` | Revoke the current guest bearer token. |
-| `POST` | `/api/designs` | Create a design with `productId` and `canvasState`; returns its ID and share URL. |
-| `GET` | `/api/designs?page=1&limit=20` | List designs for the customer or guest session. |
+| `POST` | `/api/designs` | Create a design with `productId`, optional `productVariantId`, and `canvasState`; returns its ID and share URL. |
+| `GET` | `/api/designs?page=1&limit=20&productId=<id>&productVariantId=<id>` | List designs for the customer or guest session, optionally scoped to a product and variant. |
 | `GET` | `/api/designs/:id` | Get an owned design to resume it. |
 | `PUT` | `/api/designs/:id` | Save a new canvas version; include `expectedVersion` and updated canvas data. |
-| `GET` | `/api/designs/:id/revisions` | List up to the latest 20 versions. |
+| `GET` | `/api/designs/:id/revisions?productId=<id>&productVariantId=<id>` | List revisions scoped to the design's product and variant (up to the latest 50). |
 | `POST` | `/api/designs/:id/revisions/:version/restore` | Restore a retained version as a new version; include `expectedVersion`. |
 | `POST` / `DELETE` | `/api/designs/:id/share` | Rotate or revoke a share link. |
 | `GET` | `/api/designs/share/:token` | Read the shared design (public / view-only). |
@@ -108,6 +118,16 @@ Authentication options for design requests:
 1. **Guest Shopper**: Include `Authorization: Bearer <sessionToken>` obtained from `/api/designs/sessions`.
 2. **Customer**: Include `x-customer-id: <customerId>` header (or `?customerId=<id>`).
 3. **Store Scoping**: Optional `x-shop: <shop.myshopify.com>` header (defaults to your configured store).
+
+Each design revision is saved atomically with its parent design and carries the same `productId` and optional `productVariantId`. Product history requests should include the selected product context; revisions for other products or variants are not returned.
+
+#### Customizer storefront publishing
+
+The Customizer Studio loads the authenticated Shopify catalog and groups products by their Shopify category/type. It uses the selected variant's Shopify image when available, shows the product's category-aware print area, and supports up to 12 additional editable text/sticker layers with position, scale, rotation, visibility, and ordering controls. Layer state is included in saved designs and published artwork; the API enforces the layer count, field bounds, and 8 MB canvas-state limit. If the Shopify catalog is unavailable or has no eligible products, the editor shows an error/empty state instead of presenting demo products as store inventory. Undergarments and archived source products are excluded. Publishing through `/api/shopify/publish` verifies the selected source product and option combination against Shopify, then copies its full variant matrix and per-variant prices into the CustomForge product before assigning an optional collection and publishing to the Online Store channel. The collection flow supports an existing collection, creating a collection, or publishing without a collection.
+
+Publishing requires the `write_products`, `read_publications`, and `write_publications` Shopify scopes in `shopify.app.toml`. Reinstall or reauthorize the app after changing scopes so the Admin API session receives the new permissions.
+
+Background removal is available from the editor's Upload tool for browser-decodable image files up to 10 MB and 8 megapixels. It runs the Apache-2.0 `Xenova/modnet` model through Transformers.js in the merchant's browser; uploaded artwork stays on the device and is not sent to a third-party inference API. The original upload remains active until the merchant accepts the transparent result. The model is portrait-focused, so results can vary for non-portrait subjects. Model weights are downloaded and cached in the browser when background removal is first used.
 
 ### Build
 

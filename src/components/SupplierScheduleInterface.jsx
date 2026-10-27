@@ -1,376 +1,408 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Card,
-  BlockStack,
-  InlineStack,
-  Text,
-  Badge,
-  Select,
-  TextField,
-  ProgressBar,
   Banner,
-  Button,
-  ButtonGroup,
-  Modal,
+  BlockStack,
   Box,
+  Button,
+  Card,
+  Checkbox,
   Divider,
-  DataTable,
+  InlineStack,
+  Modal,
+  ProgressBar,
+  Select,
+  Text,
+  TextField,
 } from '@shopify/polaris';
+import api from '../services/api';
 
-/**
- * SupplierScheduleInterface
- * 
- * Enforces production batch schedule creation rules:
- * - Supplier category matching (Apparel, Leather, Drinkware, Metal, Paper)
- * - Strict design count enforcement: MINIMUM 25, MAXIMUM 100 designs per batch
- * - Capacity meter with dynamic tone feedback
- * - 2-step Merchant OTP verification flow before dispatching batch to factory
- * 
- * Built strictly with @shopify/polaris layout and components (zero custom CSS).
- */
+const MAX_DESIGNS = 100;
+const MIN_DESIGNS = 25;
+
+const getToday = () => {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+};
+
 export default function SupplierScheduleInterface({
   onScheduleCreated = () => {},
   availableDesigns = [],
+  suppliers = [],
 }) {
-  const [category, setCategory] = useState('apparel');
-  const [supplierId, setSupplierId] = useState('sup_apex');
-  const [scheduledDate, setScheduledDate] = useState('2026-11-05');
+  const [category, setCategory] = useState('');
+  const [supplierId, setSupplierId] = useState('');
+  const [scheduledDate, setScheduledDate] = useState(getToday);
   const [notes, setNotes] = useState('');
-  const [selectedCount, setSelectedCount] = useState(0); // Starts at 0
-
-  
-  // OTP Verification Modal States
-  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [selectedDesignIds, setSelectedDesignIds] = useState([]);
+  const [scheduleId, setScheduleId] = useState('');
   const [otpValue, setOtpValue] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [requestingOtp, setRequestingOtp] = useState(false);
+  const [retryingEmail, setRetryingEmail] = useState(false);
   const [otpError, setOtpError] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [scheduleSuccess, setScheduleSuccess] = useState(false);
+  const [otpMessage, setOtpMessage] = useState('');
+  const [alert, setAlert] = useState(null);
+  const [confirmedSchedule, setConfirmedSchedule] = useState(null);
 
-  // Supplier Options
-  const supplierOptions = [
-    { label: 'Apex Apparel & Embroidery Mills (Apparel Specialist)', value: 'sup_apex' },
-    { label: 'Nordic Leathercraft Co. (Leather Goods)', value: 'sup_nordic' },
-    { label: 'Vanguard Thermal Drinkware Labs (Hydro Flasks / Tumblers)', value: 'sup_vanguard' },
-    { label: 'Titan Precision Metal & Laser Guild (Metals)', value: 'sup_titan' },
-    { label: 'Artisan Offset & Foil Press (Paper / Stationery)', value: 'sup_artisan' },
-  ];
+  const categoryOptions = useMemo(() => {
+    const categories = [...new Set(
+      suppliers
+        .map((supplier) => supplier.supplierCategory?.trim())
+        .filter(Boolean),
+    )].sort((left, right) => left.localeCompare(right));
 
-  const categoryOptions = [
-    { label: 'Apparel & Textiles', value: 'apparel' },
-    { label: 'Leather & Synthetic Craft', value: 'leather' },
-    { label: 'Drinkware & Flasks', value: 'drinkware' },
-    { label: 'Metals & Precision Hardware', value: 'metal' },
-    { label: 'Stationery & Luxury Paper', value: 'paper' },
-  ];
+    return [
+      { label: 'Select a supplier category', value: '' },
+      ...categories.map((value) => ({ label: value, value })),
+    ];
+  }, [suppliers]);
 
-  // Rule constraints: strictly 25 to 100 designs
-  const MIN_DESIGNS = 25;
-  const MAX_DESIGNS = 100;
+  const supplierOptions = useMemo(() => [
+    { label: 'Select a registered supplier', value: '' },
+    ...suppliers
+      .filter(
+        (supplier) =>
+          supplier.supplierCategory?.trim().toLowerCase() === category.toLowerCase(),
+      )
+      .map((supplier) => ({
+        label: `${supplier.fullName} (${supplier.email})`,
+        value: String(supplier._id || supplier.id),
+      })),
+  ], [category, suppliers]);
 
-  const isBelowMin = selectedCount < MIN_DESIGNS;
-  const isAboveMax = selectedCount > MAX_DESIGNS;
-  const isValidCount = !isBelowMin && !isAboveMax;
+  const designOptions = useMemo(() => {
+    const uniqueDesigns = new Map();
+    for (const order of availableDesigns) {
+      const designId = String(order.designId || '').trim();
+      if (
+        !designId ||
+        String(order.status || '').toUpperCase() !== 'APPROVED' ||
+        uniqueDesigns.has(designId)
+      ) continue;
+      uniqueDesigns.set(designId, {
+        id: designId,
+        label: `${order.id || order.orderId || 'Order'} — ${order.product || 'Custom product'}`,
+        status: order.status || 'Unknown',
+      });
+    }
+    return [...uniqueDesigns.values()].slice(0, MAX_DESIGNS);
+  }, [availableDesigns]);
 
-  const progressPercent = Math.min(100, Math.max(0, Math.round((selectedCount / MAX_DESIGNS) * 100)));
+  const selectedCount = selectedDesignIds.length;
+  const isValidCount = selectedCount >= MIN_DESIGNS && selectedCount <= MAX_DESIGNS;
+  const progress = Math.min(100, Math.round((selectedCount / MAX_DESIGNS) * 100));
 
-  const handleCountChange = useCallback((value) => {
-    const num = parseInt(value, 10);
-    setSelectedCount(isNaN(num) ? 0 : num);
-  }, []);
+  const toggleDesign = (designId, checked) => {
+    setSelectedDesignIds((current) => {
+      if (!checked) return current.filter((id) => id !== designId);
+      if (current.length >= MAX_DESIGNS || current.includes(designId)) return current;
+      return [...current, designId];
+    });
+  };
 
-  const handleQuickAdjust = useCallback((delta) => {
-    setSelectedCount((prev) => Math.max(0, prev + delta));
-  }, []);
-
-  const handleOpenOtpModal = useCallback(() => {
-    if (!isValidCount) return;
-    setOtpRequested(true);
-    setOtpValue('');
+  const requestOtp = async (id) => {
+    setRequestingOtp(true);
     setOtpError('');
-    setOtpModalOpen(true);
-  }, [isValidCount]);
+    setOtpMessage('');
+    try {
+      const response = await api.schedules.requestOtp(id);
+      setOtpMessage(response.message || 'A verification code was sent to your email.');
+    } catch (error) {
+      setOtpError(error.message || 'Unable to send the verification code.');
+    } finally {
+      setRequestingOtp(false);
+    }
+  };
 
-  const handleVerifyOtp = useCallback(() => {
-    if (otpValue.trim().length !== 6 || !/^\d{6}$/.test(otpValue.trim())) {
-      setOtpError('Security OTP must be exactly 6 numeric digits.');
+  const handleCreateSchedule = async () => {
+    if (!isValidCount || !category || !supplierId || !scheduledDate) return;
+
+    setLoading(true);
+    setAlert(null);
+    setConfirmedSchedule(null);
+    try {
+      const response = await api.schedules.create({
+        supplierId,
+        category,
+        designIds: selectedDesignIds,
+        scheduledAt: new Date(scheduledDate).toISOString(),
+        notes: notes.trim() || undefined,
+        metadata: {
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        },
+      });
+      const newScheduleId = response.data?.scheduleId;
+      if (!newScheduleId) {
+        throw new Error('Schedule creation did not return a schedule ID.');
+      }
+      setScheduleId(newScheduleId);
+      setOtpValue('');
+      setOtpModalOpen(true);
+      await requestOtp(newScheduleId);
+    } catch (error) {
+      setAlert({ tone: 'critical', message: error.message || 'Unable to create the schedule.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const otp = otpValue.trim();
+    if (!/^\d{6}$/.test(otp)) {
+      setOtpError('Enter the 6-digit code sent to your merchant email.');
       return;
     }
 
-    setIsVerifying(true);
+    setLoading(true);
     setOtpError('');
-
-    // Simulate backend OTP verification & dispatch call
-    setTimeout(() => {
-      setIsVerifying(false);
-      setOtpModalOpen(false);
-      setScheduleSuccess(true);
-      onScheduleCreated({
-        supplierId,
-        category,
+    try {
+      const response = await api.schedules.verifyOtp(scheduleId, otp);
+      const confirmed = {
+        ...(response.schedule || {}),
+        scheduleId,
         designCount: selectedCount,
-        scheduledDate,
-        notes,
-        status: 'CONFIRMED',
+        supplierNotification: response.supplierNotification,
+      };
+      setConfirmedSchedule(confirmed);
+      setOtpModalOpen(false);
+      setOtpValue('');
+      setSelectedDesignIds([]);
+      setAlert({
+        tone: response.supplierNotification?.scheduled || response.supplierNotification?.inProgress
+          ? 'info'
+          : response.supplierNotification?.sent === false
+            ? 'warning'
+            : 'success',
+        message: response.message || 'The production schedule was confirmed.',
       });
-    }, 1200);
-  }, [otpValue, supplierId, category, selectedCount, scheduledDate, notes, onScheduleCreated]);
+      onScheduleCreated(confirmed);
+    } catch (error) {
+      setOtpError(error.message || 'The verification code could not be confirmed.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Sample design roster rows
-  const sampleDesignRows = useMemo(() => [
-    ['#DSGN-9842', 'Vintage Mountain Emblem T-Shirt', 'Screen Print', '300 DPI Pass', 'Ready'],
-    ['#DSGN-9843', 'Minimalist Serif Monogram Hoodie', 'Direct-to-Garment', '320 DPI Pass', 'Ready'],
-    ['#DSGN-9844', 'Botanical Line Art Crewneck', 'Direct-to-Garment', '300 DPI Pass', 'Ready'],
-    ['#DSGN-9845', 'Geometric Cyberpunk Chest Patch', 'Sublimation', '300 DPI Pass', 'Ready'],
-    ['#DSGN-9846', 'Retro Sunset Wave Illustration', 'Screen Print', '350 DPI Pass', 'Ready'],
-  ], []);
+  const handleRetryEmail = async () => {
+    if (!scheduleId) return;
+    setRetryingEmail(true);
+    setAlert(null);
+    try {
+      const response = await api.schedules.sendEmail(scheduleId);
+      setConfirmedSchedule((current) => ({
+        ...current,
+        supplierEmailStatus: response.data?.sent
+          ? 'sent'
+          : response.data?.inProgress
+            ? 'sending'
+            : 'pending',
+        supplierEmailError: null,
+        supplierNotification: response.data,
+      }));
+      setAlert({
+        tone: response.data?.scheduled || response.data?.inProgress
+          ? 'info'
+          : response.data?.sent
+            ? 'success'
+            : 'warning',
+        message: response.data?.message || response.message || 'Supplier notification status updated.',
+      });
+    } catch (error) {
+      setAlert({
+        tone: 'critical',
+        message: error.message || 'Unable to send the supplier notification. Please try again.',
+      });
+    } finally {
+      setRetryingEmail(false);
+    }
+  };
 
   return (
-    <BlockStack gap="500">
-      {scheduleSuccess && (
-        <Banner
-          title="Production Schedule Confirmed & Dispatched"
-          tone="success"
-          onDismiss={() => setScheduleSuccess(false)}
-        >
-          <Text as="p" variant="bodyMd">
-            OTP Verified successfully. Batch of {selectedCount} customized designs has been locked and routed to the designated supplier queue.
-          </Text>
+    <BlockStack gap="400">
+      {alert && (
+        <Banner tone={alert.tone} onDismiss={() => setAlert(null)}>
+          <Text as="p">{alert.message}</Text>
         </Banner>
       )}
 
-      {/* Main Form Configuration Card */}
-      <Card>
-        <BlockStack gap="400">
-          <InlineStack align="space-between" alignBlock="center">
-            <BlockStack gap="100">
-              <Text variant="headingMd" as="h3">
-                Create Factory Production Schedule
-              </Text>
-              <Text variant="bodySm" tone="subdued">
-                Group custom customer orders into factory runs. Rule constraint: Each schedule requires between 25 and 100 approved designs.
-              </Text>
-            </BlockStack>
-            <Badge tone={isValidCount ? 'success' : 'critical'}>
-              {isValidCount ? 'Batch Capacity Valid' : 'Invalid Batch Size'}
-            </Badge>
-          </InlineStack>
+      {confirmedSchedule?.supplierNotification?.scheduled && (
+        <Banner tone="info" title="Supplier email is scheduled">
+          <Text as="p">{confirmedSchedule.supplierNotification.message}</Text>
+        </Banner>
+      )}
 
-          <Divider />
+      {confirmedSchedule?.supplierNotification?.inProgress && (
+        <Banner tone="info" title="Supplier email is being delivered">
+          <Text as="p">{confirmedSchedule.supplierNotification.message}</Text>
+        </Banner>
+      )}
 
-          {/* Form Fields */}
-          <InlineStack gap="400" wrap={false}>
-            <Box width="50%">
-              <Select
-                label="Target Manufacturing Category"
-                options={categoryOptions}
-                value={category}
-                onChange={setCategory}
-                helpText="Only orders matching this production category will be bundled."
-              />
-            </Box>
-            <Box width="50%">
-              <Select
-                label="Assigned Verified Supplier"
-                options={supplierOptions}
-                value={supplierId}
-                onChange={setSupplierId}
-                helpText="Suppliers must be verified for this specialization."
-              />
-            </Box>
-          </InlineStack>
-
-          <InlineStack gap="400" wrap={false}>
-            <Box width="50%">
-              <TextField
-                label="Target Production Dispatch Date"
-                type="date"
-                value={scheduledDate}
-                onChange={setScheduledDate}
-                autoComplete="off"
-              />
-            </Box>
-            <Box width="50%">
-              <TextField
-                label="Internal Production Run Notes"
-                placeholder="e.g. Priority run for holiday delivery cut-off"
-                value={notes}
-                onChange={setNotes}
-                autoComplete="off"
-              />
-            </Box>
-          </InlineStack>
-
-          {/* Strict 25 - 100 Quantity Counter Section */}
-          <Card background="bg-surface-secondary">
+      {confirmedSchedule?.supplierNotification?.sent === false &&
+        !confirmedSchedule?.supplierNotification?.scheduled &&
+        !confirmedSchedule?.supplierNotification?.inProgress && (
+        <Card>
+          <Box padding="400">
             <BlockStack gap="300">
+              <Text as="p" tone="critical">
+                Schedule is confirmed, but the supplier email was not delivered.
+              </Text>
+              <Button onClick={handleRetryEmail} loading={retryingEmail}>
+                Retry supplier email
+              </Button>
+            </BlockStack>
+          </Box>
+        </Card>
+      )}
+
+      {scheduleId && !confirmedSchedule && !otpModalOpen && (
+        <Banner
+          tone="warning"
+          title="Schedule awaits verification"
+          action={{ content: 'Continue verification', onAction: () => setOtpModalOpen(true) }}
+        >
+          <Text as="p">Schedule {scheduleId} has not been confirmed yet.</Text>
+        </Banner>
+      )}
+
+      <Card>
+        <Box padding="400">
+          <BlockStack gap="400">
+            <BlockStack gap="100">
+              <Text variant="headingMd" as="h2">Create supplier schedule</Text>
+              <Text as="p" tone="subdued">
+                Select 25 to 100 saved designs. Confirming the schedule emails its details to the assigned supplier.
+              </Text>
+            </BlockStack>
+
+            <Divider />
+
+            <InlineStack gap="400" wrap>
+              <Box minWidth="250px">
+                <Select
+                  label="Supplier category"
+                  options={categoryOptions}
+                  value={category}
+                  onChange={(value) => {
+                    setCategory(value);
+                    setSupplierId('');
+                  }}
+                  disabled={suppliers.length === 0}
+                />
+              </Box>
+              <Box minWidth="250px">
+                <Select
+                  label="Registered supplier"
+                  options={supplierOptions}
+                  value={supplierId}
+                  onChange={setSupplierId}
+                  disabled={!category}
+                />
+              </Box>
+              <Box minWidth="200px">
+                <TextField
+                  label="Scheduled production date and time"
+                  type="datetime-local"
+                  value={scheduledDate}
+                  onChange={setScheduledDate}
+                  autoComplete="off"
+                />
+              </Box>
+            </InlineStack>
+
+            <TextField
+              label="Notes for supplier (optional)"
+              value={notes}
+              onChange={setNotes}
+              multiline={2}
+              maxLength={1000}
+              autoComplete="off"
+            />
+
+            <BlockStack gap="200">
               <InlineStack align="space-between">
-                <Text variant="headingSm" as="h4">
-                  Bundled Designs Count ({selectedCount} Selected)
-                </Text>
-                <Text variant="bodyMd" fontWeight="bold">
-                  Requirement: 25 Min — 100 Max
-                </Text>
+                <Text variant="headingSm" as="h3">Approved designs ({selectedCount} selected)</Text>
+                <Text as="p" tone="subdued">Minimum 25, maximum 100</Text>
               </InlineStack>
-
               <ProgressBar
-                progress={progressPercent}
-                tone={isValidCount ? 'success' : 'critical'}
-                size="medium"
+                progress={progress}
+                tone={isValidCount ? 'success' : 'highlight'}
+                size="small"
               />
-
-              <InlineStack align="space-between" alignBlock="center">
-                <ButtonGroup>
-                  <Button onClick={() => handleQuickAdjust(-10)} disabled={selectedCount <= 0}>
-                    -10
-                  </Button>
-                  <Button onClick={() => handleQuickAdjust(-1)} disabled={selectedCount <= 0}>
-                    -1
-                  </Button>
-                  <Button onClick={() => setSelectedCount(25)}>
-                    Set Min (25)
-                  </Button>
-                  <Button onClick={() => setSelectedCount(50)}>
-                    Set 50
-                  </Button>
-                  <Button onClick={() => setSelectedCount(100)}>
-                    Set Max (100)
-                  </Button>
-                  <Button onClick={() => handleQuickAdjust(1)}>
-                    +1
-                  </Button>
-                  <Button onClick={() => handleQuickAdjust(10)}>
-                    +10
-                  </Button>
-                </ButtonGroup>
-
-                <Box width="120px">
-                  <TextField
-                    label="Count"
-                    labelHidden
-                    type="number"
-                    value={String(selectedCount)}
-                    onChange={handleCountChange}
-                    min={0}
-                    max={150}
-                    autoComplete="off"
-                  />
-                </Box>
-              </InlineStack>
-
-              {/* Dynamic Rule Violation Warning Banners */}
-              {isBelowMin && (
-                <Banner tone="critical" title="Batch Size Too Low">
-                  <Text as="p" variant="bodyMd">
-                    Supplier agreement requires a minimum of <strong>25 approved designs</strong> per schedule to meet factory machine calibration economics. Current count: {selectedCount} ({25 - selectedCount} more required).
-                  </Text>
-                </Banner>
-              )}
-
-              {isAboveMax && (
-                <Banner tone="critical" title="Batch Size Exceeds Factory Capacity">
-                  <Text as="p" variant="bodyMd">
-                    Factory limit is strictly <strong>100 designs</strong> per single production run. Current selection exceeds the limit by {selectedCount - 100}. Please split into two batches.
-                  </Text>
-                </Banner>
+              {designOptions.length === 0 ? (
+                <Text as="p" tone="subdued">
+                  No saved designs are available in the current order list.
+                </Text>
+              ) : (
+                <BlockStack gap="200">
+                  {designOptions.map((design) => (
+                    <Checkbox
+                      key={design.id}
+                      label={design.label}
+                      helpText={`Design ID: ${design.id} · Order status: ${design.status}`}
+                      checked={selectedDesignIds.includes(design.id)}
+                      disabled={
+                        selectedCount >= MAX_DESIGNS && !selectedDesignIds.includes(design.id)
+                      }
+                      onChange={(checked) => toggleDesign(design.id, checked)}
+                    />
+                  ))}
+                </BlockStack>
               )}
             </BlockStack>
-          </Card>
 
-          {/* Sample Batched Designs Table */}
-          <BlockStack gap="200">
-            <Text variant="headingSm" as="h4">
-              Approved Designs in Current Queue ({category.toUpperCase()})
-            </Text>
-            <DataTable
-              columnContentTypes={['text', 'text', 'text', 'text', 'text']}
-              headings={['Design ID', 'Product Title', 'Technique', 'Artwork Quality', 'Feasibility']}
-              rows={sampleDesignRows}
-            />
-          </BlockStack>
-
-          <Divider />
-
-          {/* Schedule Confirmation Action Bar */}
-          <InlineStack align="space-between" alignBlock="center">
-            <Text variant="bodySm" tone="subdued">
-              Dispatching requires 2-factor OTP verification sent to merchant registered email.
-            </Text>
             <Button
               variant="primary"
-              size="large"
-              disabled={!isValidCount}
-              onClick={handleOpenOtpModal}
+              onClick={handleCreateSchedule}
+              loading={loading}
+              disabled={
+                !isValidCount ||
+                !category ||
+                !supplierId ||
+                !scheduledDate ||
+                !designOptions.length ||
+                (scheduleId && !confirmedSchedule)
+              }
             >
-              Request OTP &amp; Authorize Schedule
+              Create schedule and request verification code
             </Button>
-          </InlineStack>
-        </BlockStack>
+          </BlockStack>
+        </Box>
       </Card>
 
-      {/* Merchant Security OTP Verification Modal */}
       <Modal
         open={otpModalOpen}
         onClose={() => setOtpModalOpen(false)}
-        title="Merchant Production Authorization (2FA OTP)"
+        title="Confirm supplier schedule"
         primaryAction={{
-          content: 'Verify OTP & Dispatch to Factory',
+          content: 'Verify and confirm schedule',
           onAction: handleVerifyOtp,
-          loading: isVerifying,
-          disabled: otpValue.trim().length !== 6,
+          loading,
+          disabled: !scheduleId || !/^\d{6}$/.test(otpValue.trim()),
         }}
         secondaryActions={[
-          {
-            content: 'Cancel',
-            onAction: () => setOtpModalOpen(false),
-          },
+          { content: 'Cancel', onAction: () => setOtpModalOpen(false) },
         ]}
       >
         <Modal.Section>
           <BlockStack gap="400">
-            <Banner tone="info" title="Security Code Sent">
-              <Text as="p" variant="bodyMd">
-                A 6-digit verification code has been dispatched to your merchant administrator email. Enter the code below to lock batch of {selectedCount} designs and commit factory capacity.
-              </Text>
-            </Banner>
-
-            {otpError && (
-              <Banner tone="critical" title="Verification Failed">
-                <Text as="p" variant="bodyMd">{otpError}</Text>
-              </Banner>
-            )}
-
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="bodyMd" fontWeight="semibold">
-                  Batch Summary:
-                </Text>
-                <InlineStack align="space-between">
-                  <Text variant="bodySm" tone="subdued">Target Supplier:</Text>
-                  <Text variant="bodySm">Apex Apparel &amp; Embroidery Mills</Text>
-                </InlineStack>
-                <InlineStack align="space-between">
-                  <Text variant="bodySm" tone="subdued">Total Approved Items:</Text>
-                  <Text variant="bodySm" fontWeight="bold">{selectedCount} Designs (Rule Compliant)</Text>
-                </InlineStack>
-                <InlineStack align="space-between">
-                  <Text variant="bodySm" tone="subdued">Dispatch Date:</Text>
-                  <Text variant="bodySm">{scheduledDate}</Text>
-                </InlineStack>
-
-                <Divider />
-
-                <TextField
-                  label="Enter 6-Digit Merchant Authorization Code"
-                  value={otpValue}
-                  onChange={setOtpValue}
-                  placeholder="e.g. 849201"
-                  maxLength={6}
-                  autoComplete="one-time-code"
-                  helpText="Code expires in 10 minutes. For testing, enter any 6 digits."
-                />
-              </BlockStack>
-            </Card>
+            <Text as="p">
+              Enter the 6-digit code sent to your merchant account email. The supplier is notified only after verification.
+            </Text>
+            {otpError && <Banner tone="critical">{otpError}</Banner>}
+            {otpMessage && <Banner tone="success">{otpMessage}</Banner>}
+            <TextField
+              label="Email verification code"
+              value={otpValue}
+              onChange={setOtpValue}
+              maxLength={6}
+              autoComplete="one-time-code"
+              inputMode="numeric"
+            />
+            <Button onClick={() => requestOtp(scheduleId)} loading={requestingOtp} disabled={!scheduleId}>
+              Send code again
+            </Button>
           </BlockStack>
         </Modal.Section>
       </Modal>

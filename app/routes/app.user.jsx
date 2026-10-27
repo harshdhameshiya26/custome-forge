@@ -1,4 +1,4 @@
-import Customers from "../../src/pages/Customers";
+import UserPage from "../../src/pages/User";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
@@ -7,8 +7,8 @@ export const loader = async ({ request }) => {
   return null;
 };
 
-export default function CustomersRoute() {
-  return <Customers />;
+export default function UserRoute() {
+  return <UserPage />;
 }
 
 export const headers = (headersArgs) => {

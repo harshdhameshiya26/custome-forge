@@ -11,7 +11,9 @@
  *   EMAIL_SECURE   — "true" for SSL/465, "false" for STARTTLS/587
  *   EMAIL_USER     — SMTP login username / Gmail address
  *   EMAIL_PASS     — SMTP password or Gmail App Password
- *   EMAIL_FROM     — Sender display string (e.g. "CustomForge <noreply@customforge.com>")
+ *   EMAIL_FROM     — Verified sender address aligned with the sending domain
+ *   SENDGRID_API_KEY — SendGrid SMTP API key (alternative to EMAIL_HOST credentials)
+ *   EMAIL_FROM_ADDRESS / EMAIL_FROM_NAME — Explicit authenticated sender
  */
 
 import nodemailer from 'nodemailer';
@@ -29,14 +31,33 @@ dotenv.config({ path: envPath });
 
 /**
  * Build and return a Nodemailer transporter.
- * Falls back to Ethereal (catch-all test mailbox) when EMAIL_HOST is absent,
- * so development works out-of-the-box without real SMTP credentials.
+ * Uses Ethereal only in development when no SMTP or SendGrid transport is configured.
  */
 const createTransporter = async () => {
   const host = process.env.EMAIL_HOST;
+  const sendGridApiKey = process.env.SENDGRID_API_KEY;
 
-  // ── Development / fallback: Ethereal test account ──────────────────────────
+  if (sendGridApiKey) {
+    return nodemailer.createTransport({
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: 'apikey', pass: sendGridApiKey },
+      connectionTimeout: 10_000,
+      greetingTimeout: 5_000,
+      socketTimeout: 15_000,
+      tls: { minVersion: 'TLSv1.2' },
+    });
+  }
+
+  // Use a test mailbox only outside production; never silently discard live email.
   if (!host) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'Email delivery is not configured. Set SENDGRID_API_KEY or EMAIL_HOST and SMTP credentials.',
+      );
+    }
     logWarn(
       '[EmailService] EMAIL_HOST not set — creating Ethereal test account. ' +
         'Preview URLs will be logged to the console.',
@@ -53,19 +74,24 @@ const createTransporter = async () => {
     });
   }
 
+  const smtpUser = process.env.EMAIL_USER;
+  const smtpPassword = process.env.EMAIL_PASS;
+  if (Boolean(smtpUser) !== Boolean(smtpPassword)) {
+    throw new Error('Configure both EMAIL_USER and EMAIL_PASS for authenticated SMTP delivery.');
+  }
+
   // ── Production: SMTP via env vars ──────────────────────────────────────────
   return nodemailer.createTransport({
     host,
     port: parseInt(process.env.EMAIL_PORT || '587', 10),
     secure: process.env.EMAIL_SECURE === 'true', // true = SSL/465, false = STARTTLS
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
+    requireTLS: process.env.EMAIL_SECURE !== 'true',
+    ...(smtpUser ? { auth: { user: smtpUser, pass: smtpPassword } } : {}),
     // Sensible timeouts — prevents hanging on network issues
     connectionTimeout: 10_000, // 10 s
     greetingTimeout: 5_000,    //  5 s
     socketTimeout: 15_000,     // 15 s
+    tls: { minVersion: 'TLSv1.2' },
   });
 };
 
@@ -87,6 +113,39 @@ const getTransporter = async () => {
   }
   return _transporter;
 };
+
+const getFromAddress = () => {
+  const fromAddress = process.env.EMAIL_FROM_ADDRESS;
+  if (fromAddress) {
+    if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(fromAddress)) {
+      throw new Error('EMAIL_FROM_ADDRESS must be a valid email address.');
+    }
+    const name = (process.env.EMAIL_FROM_NAME || 'CustomForge').replace(/[\r\n"]/g, '').trim();
+    return { name: name || 'CustomForge', address: fromAddress };
+  }
+
+  if (process.env.EMAIL_FROM) {
+    if (/[\r\n]/.test(process.env.EMAIL_FROM)) {
+      throw new Error('EMAIL_FROM contains invalid header characters.');
+    }
+    return process.env.EMAIL_FROM;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Email sender is not configured. Set EMAIL_FROM_ADDRESS to an address on an authenticated sending domain.',
+    );
+  }
+
+  return process.env.EMAIL_USER?.includes('@')
+    ? { name: 'CustomForge', address: process.env.EMAIL_USER }
+    : { name: 'CustomForge', address: 'noreply@customforge.com' };
+};
+
+const getStandardHeaders = () => ({
+  'X-Mailer': 'CustomForge Transactional Mail',
+  'Auto-Submitted': 'auto-generated',
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML / plain-text OTP template
@@ -202,7 +261,7 @@ const buildOtpTemplate = (fullName, otp, expiryMs) => {
     </div>
 
     <div class="body">
-      <p>Hi <strong>${fullName || 'there'}</strong>,</p>
+      <p>Hi <strong>${escapeHtml(fullName || 'there')}</strong>,</p>
       <p>
         You requested a verification code for your CustomForge account.
         Use the code below to complete your verification:
@@ -253,6 +312,15 @@ const buildOtpTemplate = (fullName, otp, expiryMs) => {
   return { html, text };
 };
 
+const escapeHtml = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,19 +343,18 @@ export const sendOtpEmail = async ({ to, fullName, otp, expiryMs }) => {
   const transporter = await getTransporter();
   const { html, text } = buildOtpTemplate(fullName, otp, expiryMs);
 
-  const fromAddress =
-    process.env.EMAIL_FROM || 'CustomForge <noreply@customforge.com>';
-
   const info = await transporter.sendMail({
-    from: fromAddress,
+    from: getFromAddress(),
     to,
     subject: `${otp} — Your CustomForge Verification Code`,
     text,
     html,
+    headers: getStandardHeaders(),
+    ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
   });
 
   // In development with Ethereal, log the preview URL so you can inspect the email
-  if (!process.env.EMAIL_HOST) {
+  if (!process.env.EMAIL_HOST && !process.env.SENDGRID_API_KEY) {
     logWarn(`[EmailService] Ethereal preview URL: ${nodemailer.getTestMessageUrl(info)}`);
   }
 
@@ -306,20 +373,23 @@ export const sendOtpEmail = async ({ to, fullName, otp, expiryMs }) => {
  * @param {string}   options.html     — HTML body
  * @param {string}   [options.text]   — Optional plain-text fallback
  */
-export const sendGenericEmail = async ({ to, subject, html, text }) => {
+export const sendGenericEmail = async ({ to, subject, html, text, attachments = [] }) => {
+  if (!Array.isArray(attachments)) {
+    throw new TypeError('Email attachments must be provided as an array.');
+  }
   const transporter = await getTransporter();
-  const fromAddress =
-    process.env.EMAIL_FROM || 'CustomForge <noreply@customforge.com>';
-
   const info = await transporter.sendMail({
-    from: fromAddress,
+    from: getFromAddress(),
     to,
     subject,
     html,
     text: text || '',
+    attachments,
+    headers: getStandardHeaders(),
+    ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
   });
 
-  if (!process.env.EMAIL_HOST) {
+  if (!process.env.EMAIL_HOST && !process.env.SENDGRID_API_KEY) {
     logWarn(`[EmailService] Ethereal preview URL: ${nodemailer.getTestMessageUrl(info)}`);
   }
 

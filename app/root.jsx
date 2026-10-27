@@ -1,6 +1,45 @@
+import { useEffect } from "react";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { reportClientError } from "../src/services/api";
 
 export default function App() {
+  useEffect(() => {
+    const handleError = (event) => {
+      const error = event.error;
+      let source = '';
+      if (event.filename) {
+        try {
+          source = new URL(event.filename, window.location.href).pathname;
+        } catch {
+          source = 'unknown source';
+        }
+      }
+      reportClientError({
+        category: 'window-error',
+        message: error?.message || event.message || 'Uncaught browser error',
+        stack: error?.stack,
+        source: source
+          ? `${source}:${event.lineno || 0}:${event.colno || 0}`
+          : '',
+      });
+    };
+    const handleRejection = (event) => {
+      const reason = event.reason;
+      reportClientError({
+        category: 'unhandled-rejection',
+        message: reason?.message || String(reason || 'Unhandled promise rejection'),
+        stack: reason?.stack,
+      });
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, []);
+
   return (
     <html lang="en">
       <head>

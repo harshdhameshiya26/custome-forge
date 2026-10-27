@@ -19,8 +19,8 @@ import scheduleRoutes from './routes/schedule.routes.js';
 import supplierRoutes from './routes/supplier.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import templateRoutes from './routes/template.routes.js';
-import customerRoutes from './routes/customer.routes.js';
 import productionRoutes from './routes/production.routes.js';
+import clientErrorRoutes from './routes/client-error.routes.js';
 import { createNotification } from './services/notificationService.js';
 import { logError } from './utils/logger.js';
 
@@ -71,6 +71,20 @@ app.use(
   }),
 );
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Log every failed backend response, including errors handled inside controllers.
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    if (res.statusCode < 400) return;
+
+    const requestPath = (req.originalUrl || req.path).split(/[?#]/, 1)[0];
+    logError(
+      `❌ [HTTP ${res.statusCode}] ${req.method} ${requestPath} (${Date.now() - startedAt}ms)`,
+    );
+  });
+  next();
+});
 
 // -----------------------------------------------------------------------------
 // 3. Health Check & Diagnostics
@@ -144,11 +158,11 @@ app.use('/api/analytics', analyticsRoutes);
 // Design Templates Catalog & Creation
 app.use('/api/templates', templateRoutes);
 
-// Merchant Customer Directory
-app.use('/api/customers', customerRoutes);
-
 // Production Queue & Workflow Routing
 app.use('/api/production', productionRoutes);
+
+// Browser-side runtime and API errors forwarded for backend-terminal diagnostics.
+app.use('/api/client-errors', clientErrorRoutes);
 
 // -----------------------------------------------------------------------------
 // 5. 404 Route Not Found Handler
@@ -165,12 +179,14 @@ app.use((req, res) => {
 // -----------------------------------------------------------------------------
 app.use((err, req, res, next) => {
   void next;
-  logError(`❌ [Global Error] ${err.message || 'Internal Server Error'}`);
-
   const statusCode =
     err.statusCode ||
     err.status ||
     (res.statusCode >= 400 ? res.statusCode : 500);
+  const routeIdentifier = `${req.method} ${req.baseUrl || req.path}`;
+  logError(
+    `❌ [Global Error] ${routeIdentifier} (${statusCode}): ${err.stack || err.message || 'Internal Server Error'}`,
+  );
 
   // Automatically log critical execution errors as FEATURE_ERROR notifications in DB
   const errorShop =
@@ -186,7 +202,6 @@ app.use((err, req, res, next) => {
     null;
 
   if (statusCode >= 500 && errorShop) {
-    const routeIdentifier = `${req.method} ${req.baseUrl || req.path}`;
     const cleanMessage =
       err.message && typeof err.message === 'string'
         ? err.message

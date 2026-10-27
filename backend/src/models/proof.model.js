@@ -28,8 +28,8 @@ const proofCommentSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['CUSTOMER', 'MERCHANT', 'SYSTEM'],
-      default: 'CUSTOMER',
+      enum: ['MERCHANT', 'SUPPLIER', 'SYSTEM'],
+      default: 'MERCHANT',
     },
     message: {
       type: String,

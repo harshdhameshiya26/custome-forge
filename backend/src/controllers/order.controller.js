@@ -3,6 +3,7 @@
 import prisma from '../config/prisma.js';
 import CustomOrderTimeline, { ORDER_TIMELINE_STAGES } from '../models/custom-order-timeline.model.js';
 import CustomOrder from '../models/custom-order.model.js';
+import { isCustomForgeOrderDesign } from '../utils/customforge-order.js';
 import { logError, logSuccess, logWarn } from '../utils/logger.js';
 
 /**
@@ -353,7 +354,6 @@ export const updateOrderTimelineStage = async (req, res) => {
 
     if (!updatedTimeline) {
       // Mongoose update
-      const existingHistory = Array.isArray(timeline.history) ? timeline.history : [];
       timeline.currentStage = normalizedStage;
       timeline.history.push(newHistoryEntry);
       if (eventMetadata) {
@@ -720,23 +720,64 @@ export const listOrders = async (req, res, next) => {
         orderBy: { createdAt: 'desc' },
         take: 100,
       });
-    } catch {
+    } catch (prismaError) {
+      logWarn(`[listOrders] Prisma query failed; trying MongoDB fallback: ${prismaError.message}`);
       orders = await CustomOrder.find(shop ? { shop } : {}).sort({ createdAt: -1 }).limit(100).lean();
     }
 
-    const data = (orders || []).map((o) => ({
-      id: o.shopifyOrderId ? `#${o.shopifyOrderId}` : `#${o.orderId}`,
-      rawId: o.orderId,
-      shopifyOrderId: o.shopifyOrderId,
-      date: o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent',
-      customer: o.customerEmail || 'Anonymous Customer',
-      product: o.productType || 'Custom Product',
-      technique: o.customizationType || 'Direct-to-Garment',
-      dpi: '300 DPI',
-      status: o.status || 'Pending',
-      supplier: o.assignedQueue || o.supplierId || 'Auto Assigned',
-      tags: o.tags || [],
-    }));
+    const data = (orders || [])
+      .map((o) => {
+        const metadata = o.metadata || {};
+        const storedDesigns = Array.isArray(metadata.customDesigns)
+          ? metadata.customDesigns
+          : [];
+        const storedLineItems = Array.isArray(metadata.customLineItems)
+          ? metadata.customLineItems
+          : [];
+        const customDesigns = storedDesigns.filter(isCustomForgeOrderDesign);
+        const customLineItems = storedLineItems.filter(isCustomForgeOrderDesign);
+        const eligibleDesigns = customDesigns.length ? customDesigns : customLineItems;
+        if (!eligibleDesigns.length) return null;
+
+        const firstDesign = eligibleDesigns[0];
+        const shopifyOrderNumber =
+          metadata.orderNumber ||
+          (o.shopifyOrderId ? `#${o.shopifyOrderId}` : `#${o.orderId}`);
+
+        return {
+          id: String(shopifyOrderNumber).startsWith('#')
+            ? String(shopifyOrderNumber)
+            : `#${shopifyOrderNumber}`,
+          rawId: o.orderId,
+          shopifyOrderId: o.shopifyOrderId,
+          shopifyOrderNumber,
+          referenceNumber: o.customReference || metadata.customReference || null,
+          designId: o.designId || null,
+          designImage: firstDesign.imageUrl || firstDesign.productImageUrl || null,
+          designText: firstDesign.text || '',
+          customDesigns,
+          customLineItems,
+          date: o.createdAt
+            ? new Date(o.createdAt).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })
+            : 'Recent',
+          customer: o.customerEmail || 'Anonymous Customer',
+          customerName: o.customerName || metadata.customerName || null,
+          customerEmail: o.customerEmail || null,
+          product: o.productType || firstDesign.title || 'Custom Product',
+          technique: o.customizationType || 'Direct-to-Garment',
+          dpi: '300 DPI',
+          status: o.status || 'Pending',
+          financialStatus: metadata.financialStatus || null,
+          scheduled: Boolean(metadata.scheduleId),
+          supplier: o.assignedQueue || o.supplierId || 'Auto Assigned',
+          tags: o.tags || [],
+        };
+      })
+      .filter(Boolean);
 
     return res.status(200).json({ success: true, count: data.length, data });
   } catch (error) {
@@ -755,4 +796,3 @@ export default {
   updateOrderTimelineStage,
   listOrders,
 };
-

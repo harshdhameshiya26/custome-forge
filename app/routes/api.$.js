@@ -1,5 +1,25 @@
 import prisma from "../db.server";
 
+const requiresBackendAuthorization = (path) =>
+  [
+    "users",
+    "library",
+    "analytics",
+    "templates",
+    "production",
+    "orders",
+    "proofs",
+    "comments",
+    "rules",
+    "billing",
+    "notifications",
+    "schedules",
+    "suppliers",
+    "print",
+    "artwork",
+    "products",
+  ].some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+
 /**
  * Universal API Route for CustomForge (/api/*)
  * - Proxies to Express backend on port 5000 if running.
@@ -10,6 +30,17 @@ import prisma from "../db.server";
 export const loader = async ({ request, params }) => {
   const url = new URL(request.url);
   const path = params["*"] || "";
+  const isDesignRequest = path === "designs" || path.startsWith("designs/");
+  const isUserRequest = path === "users" || path.startsWith("users/");
+  const isBackendAuthorizedRequest = requiresBackendAuthorization(path);
+  const isRemovedCustomerDirectory = path === "customers" || path.startsWith("customers/");
+
+  if (isRemovedCustomerDirectory) {
+    return Response.json(
+      { success: false, message: "The customer directory endpoint has been removed." },
+      { status: 404 },
+    );
+  }
 
   // 1. Try proxying to Express backend on port 5000
   try {
@@ -28,16 +59,23 @@ export const loader = async ({ request, params }) => {
         ...(request.headers.get("x-shopify-shop-domain")
           ? { "x-shopify-shop-domain": request.headers.get("x-shopify-shop-domain") }
           : {}),
+        ...(request.headers.get("x-shop")
+          ? { "x-shop": request.headers.get("x-shop") }
+          : {}),
+        ...(request.headers.get("x-customer-id")
+          ? { "x-customer-id": request.headers.get("x-customer-id") }
+          : {}),
       },
       signal: controller.signal,
     }).catch(() => null);
 
     clearTimeout(timeoutId);
 
-    if (backendRes && backendRes.ok) {
-      const data = await backendRes.json();
-      return Response.json(data, {
+    if (backendRes) {
+      return new Response(await backendRes.text(), {
+        status: backendRes.status,
         headers: {
+          "Content-Type": backendRes.headers.get("content-type") || "application/json",
           "Access-Control-Allow-Origin": "*",
         },
       });
@@ -46,22 +84,44 @@ export const loader = async ({ request, params }) => {
     // Proceed to direct Prisma handler
   }
 
+  if (isDesignRequest) {
+    return Response.json(
+      {
+        success: false,
+        message: "Design history service is unavailable. Make sure the backend is running and try again.",
+      },
+      { status: 503 },
+    );
+  }
+  if (isBackendAuthorizedRequest) {
+    return Response.json(
+      {
+        success: false,
+        message: "The API service is unavailable. Make sure the backend is running and try again.",
+      },
+      { status: 503 },
+    );
+  }
+  if (isUserRequest) {
+    return Response.json(
+      {
+        success: false,
+        message: "User authentication service is unavailable. Make sure the backend is running and try again.",
+      },
+      { status: 503 },
+    );
+  }
+
   // 2. Direct Prisma fallback handlers
   try {
     if (path.startsWith("library")) {
-      let items = [];
-      try {
-        items = await prisma.tbl_DesignLibraryItem.findMany({
-          take: 50,
-          orderBy: { createdAt: "desc" },
-        });
-      } catch {
-        items = [];
-      }
       return Response.json({
         success: true,
-        count: (items || []).length,
-        data: items || [],
+        count: 0,
+        data: {
+          items: [],
+          pagination: { page: 1, limit: 50, total: 0, pages: 0 },
+        },
       });
     }
 
@@ -89,32 +149,6 @@ export const loader = async ({ request, params }) => {
           },
           recentOrders: [],
         },
-      });
-    }
-
-    if (path.startsWith("customers")) {
-      let customers = [];
-      try {
-        customers = await prisma.tbl_User.findMany({
-          where: { role: "customer" },
-          take: 50,
-        });
-      } catch {
-        customers = [];
-      }
-      return Response.json({
-        success: true,
-        count: (customers || []).length,
-        data: (customers || []).map((c) => ({
-          id: c.id,
-          name: c.fullName || "Customer",
-          email: c.email,
-          orders: 0,
-          lastOrder: "None",
-          tier: "Customer",
-          spent: "$0.00",
-          designs: [],
-        })),
       });
     }
 
@@ -239,6 +273,17 @@ export const loader = async ({ request, params }) => {
 export const action = async ({ request, params }) => {
   const url = new URL(request.url);
   const path = params["*"] || "";
+  const isDesignRequest = path === "designs" || path.startsWith("designs/");
+  const isUserRequest = path === "users" || path.startsWith("users/");
+  const isBackendAuthorizedRequest = requiresBackendAuthorization(path);
+  const isRemovedCustomerDirectory = path === "customers" || path.startsWith("customers/");
+
+  if (isRemovedCustomerDirectory) {
+    return Response.json(
+      { success: false, message: "The customer directory endpoint has been removed." },
+      { status: 404 },
+    );
+  }
 
   // Try proxying mutation to Express backend on port 5000
   try {
@@ -252,6 +297,18 @@ export const action = async ({ request, params }) => {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...(request.headers.get("authorization")
+          ? { Authorization: request.headers.get("authorization") }
+          : {}),
+        ...(request.headers.get("x-shopify-shop-domain")
+          ? { "x-shopify-shop-domain": request.headers.get("x-shopify-shop-domain") }
+          : {}),
+        ...(request.headers.get("x-shop")
+          ? { "x-shop": request.headers.get("x-shop") }
+          : {}),
+        ...(request.headers.get("x-customer-id")
+          ? { "x-customer-id": request.headers.get("x-customer-id") }
+          : {}),
       },
       body: body || undefined,
       signal: controller.signal,
@@ -259,12 +316,89 @@ export const action = async ({ request, params }) => {
 
     clearTimeout(timeoutId);
 
-    if (backendRes && backendRes.ok) {
-      const data = await backendRes.json();
-      return Response.json(data);
+    if (backendRes) {
+      return new Response(await backendRes.text(), {
+        status: backendRes.status,
+        headers: {
+          "Content-Type": backendRes.headers.get("content-type") || "application/json",
+        },
+      });
     }
   } catch {
-    // fallback
+    if (isDesignRequest) {
+      return Response.json(
+        {
+          success: false,
+          message: "Design history service is unavailable. Make sure the backend is running and try again.",
+        },
+        { status: 503 },
+      );
+    }
+    if (isUserRequest) {
+      return Response.json(
+        {
+          success: false,
+          message: "User authentication service is unavailable. Make sure the backend is running and try again.",
+        },
+        { status: 503 },
+      );
+    }
+    if (isBackendAuthorizedRequest) {
+      return Response.json(
+        {
+          success: false,
+          message: "The API service is unavailable. Make sure the backend is running and try again.",
+        },
+        { status: 503 },
+      );
+    }
+  }
+
+  if (path.startsWith("library")) {
+    let bodyData = {};
+    try {
+      const text = await request.text();
+      bodyData = text ? JSON.parse(text) : {};
+    } catch {}
+    return Response.json({
+      success: true,
+      message: request.method === "DELETE" ? "Library item removed." : "Design saved to library successfully.",
+      data: {
+        item: {
+          id: bodyData.id || "lib_" + Date.now(),
+          ...bodyData,
+          createdAt: new Date().toISOString(),
+        },
+      },
+    });
+  }
+
+  if (isDesignRequest) {
+    return Response.json(
+      {
+        success: false,
+        message: "Design history service is unavailable. Make sure the backend is running and try again.",
+      },
+      { status: 503 },
+    );
+  }
+  if (isBackendAuthorizedRequest) {
+    return Response.json(
+      {
+        success: false,
+        message: "The API service is unavailable. Make sure the backend is running and try again.",
+      },
+      { status: 503 },
+    );
+  }
+  if (isUserRequest) {
+    return Response.json(
+      {
+        success: false,
+        message: "User authentication service is unavailable. Make sure the backend is running and try again.",
+      },
+      { status: 503 },
+    );
   }
 
   return Response.json({

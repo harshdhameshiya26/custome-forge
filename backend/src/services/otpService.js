@@ -26,7 +26,11 @@ export const hashOtp = (code) =>
 const ACTION_DESCRIPTIONS = {
   PROOF_APPROVAL: 'approving the custom product proof and releasing the order for manufacturing',
   SEND_PROOF_LINK: 'generating and dispatching the customer proof review link',
+  SEND_SECURE_FILE: 'generating and transmitting secure high-resolution print/artwork production files',
+  SEND_SECURE_LINK: 'generating and dispatching a secure customization review link',
+  SEND_SECURE_REQUEST: 'dispatching a secure verification or production request',
   CONFIRM_SCHEDULE: 'confirming the supplier production schedule and transferring design files',
+  SUPPLIER_REGISTRATION: 'verifying supplier account registration and category credentials',
   CRITICAL_ACTION: 'authorizing this sensitive customization operation',
   TRIGGER_HANDOFF: 'triggering automated production handoff for an approved order',
   REVISION_APPROVAL: 'approving the design revision snapshot',

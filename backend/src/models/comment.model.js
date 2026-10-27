@@ -6,10 +6,10 @@ import crypto from 'node:crypto';
 /**
  * Valid author roles for threaded design comments.
  */
-export const AUTHOR_ROLES = Object.freeze(['CUSTOMER', 'MERCHANT']);
+export const AUTHOR_ROLES = Object.freeze(['MERCHANT', 'SUPPLIER']);
 
 /**
- * Comment Schema (Feature 7 — Customer-Merchant Design Comments)
+ * Comment Schema
  * Scoped directly to a specific proof / revision, supporting threaded replies.
  */
 const commentSchema = new mongoose.Schema(
@@ -48,7 +48,7 @@ const commentSchema = new mongoose.Schema(
       type: String,
       enum: AUTHOR_ROLES,
       required: [true, 'authorRole is required'],
-      default: 'CUSTOMER',
+      default: 'MERCHANT',
     },
     content: {
       type: String,

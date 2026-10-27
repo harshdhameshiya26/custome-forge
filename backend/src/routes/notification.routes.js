@@ -9,6 +9,7 @@ import {
   clearAllNotifications,
 } from '../controllers/notification.controller.js';
 import { extractShopContext } from '../middleware/shopper-auth.js';
+import { requireMerchant } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -37,6 +38,7 @@ const router = express.Router();
 
 // Middleware to normalize and extract shop context for multi-tenant isolation
 router.use(extractShopContext);
+router.use(...requireMerchant);
 
 // 1. Fetch notifications
 router.get('/', getNotifications);

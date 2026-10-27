@@ -48,7 +48,7 @@ export default defineConfig({
       allow: ["app", "src", "node_modules"],
     },
     proxy: {
-      "^/api/.*": {
+      "^/api/(?!shopify/).*": {
         target: `http://localhost:${process.env.BACKEND_PORT || 5000}`,
         changeOrigin: true,
       },

@@ -7,8 +7,8 @@ import DesignRevision from '../models/design-revision.model.js';
 import DesignFeedback from '../models/design-feedback.model.js';
 import OtpService from '../services/otpService.js';
 import { logError, logSuccess, logWarn } from '../utils/logger.js';
+import { validateCustomizerCanvasState } from '../utils/canvas-state.validators.js';
 
-const MAX_CANVAS_BYTES = 8 * 1024 * 1024;
 const MAX_REVISIONS = 20;
 const MAX_PAGE_SIZE = 100;
 
@@ -42,16 +42,7 @@ const getShareUrl = (request, token) => {
   return `${protocol}://${host}/api/designs/share/${token}`;
 };
 
-const validateCanvasState = (canvasState) => {
-  if (!isPlainObject(canvasState)) {
-    throw makeHttpError(400, 'canvasState must be a JSON object.');
-  }
-
-  const byteLength = Buffer.byteLength(JSON.stringify(canvasState), 'utf8');
-  if (byteLength > MAX_CANVAS_BYTES) {
-    throw makeHttpError(413, 'canvasState must be 8 MB or smaller.');
-  }
-};
+const validateCanvasState = validateCustomizerCanvasState;
 
 const validateThumbnailUrl = (thumbnailUrl) => {
   if (thumbnailUrl == null || thumbnailUrl === '') return null;
@@ -71,6 +62,14 @@ const validateThumbnailUrl = (thumbnailUrl) => {
   }
 
   return parsed.toString();
+};
+
+const validateProductVariantId = (productVariantId) => {
+  if (productVariantId == null || productVariantId === '') return null;
+  if (typeof productVariantId !== 'string' || !productVariantId.trim()) {
+    throw makeHttpError(400, 'productVariantId must be a non-empty string.');
+  }
+  return productVariantId.trim();
 };
 
 import { storeRevision } from './revision.controller.js';
@@ -95,8 +94,20 @@ export const createOrUpdateDesign = async (request, response, next) => {
       );
     }
 
-    const { designId, canvasState, productId, thumbnailUrl, expectedVersion, changeNote, changedBy } = body;
-    const authorRole = changedBy === 'staff' ? 'staff' : (request.shopper?.customerId ? 'customer' : 'customer');
+    const {
+      designId,
+      canvasState,
+      productId,
+      productVariantId: productVariantIdInput,
+      thumbnailUrl,
+      expectedVersion,
+      changeNote,
+      changedBy,
+    } = body;
+    const authorRole = changedBy === 'staff' ? 'staff' : (request.user?.role || 'merchant');
+    const productVariantId = productVariantIdInput === undefined
+      ? undefined
+      : validateProductVariantId(productVariantIdInput);
 
     if (!designId) {
       if (typeof productId !== 'string' || !productId.trim()) {
@@ -114,6 +125,7 @@ export const createOrUpdateDesign = async (request, response, next) => {
             {
               ...getOwnerFilter(request.shopper),
               productId: productId.trim(),
+              ...(productVariantId !== undefined ? { productVariantId } : {}),
               canvasState,
               thumbnailUrl: thumbnail,
               shareTokenHash: hashShareToken(shareToken),
@@ -143,6 +155,9 @@ export const createOrUpdateDesign = async (request, response, next) => {
     if (!mongoose.isValidObjectId(designId)) {
       throw makeHttpError(400, 'designId must be a valid design ID.');
     }
+    if (productId !== undefined && (typeof productId !== 'string' || !productId.trim())) {
+      throw makeHttpError(400, 'productId must be a non-empty string.');
+    }
     if (
       !Number.isSafeInteger(expectedVersion) ||
       expectedVersion < 1
@@ -159,6 +174,15 @@ export const createOrUpdateDesign = async (request, response, next) => {
     await runInTransaction(async (session) => {
       design = await getDesignByOwner(designId, request.shopper).session(session);
       if (!design) throw makeHttpError(404, 'Design not found.');
+      if (productId !== undefined && productId.trim() !== design.productId) {
+        throw makeHttpError(409, 'A design cannot be saved under a different product. Create a new product-specific design instead.');
+      }
+      if (
+        productVariantId !== undefined &&
+        productVariantId !== (design.productVariantId || null)
+      ) {
+        throw makeHttpError(409, 'A design cannot be saved under a different product variant. Create a new variant-specific design instead.');
+      }
       if (expectedVersion !== design.version) {
         throw makeHttpError(
           409,
@@ -199,6 +223,10 @@ export const listMyDesigns = async (request, response, next) => {
       typeof request.query.productId === 'string'
         ? request.query.productId.trim()
         : '';
+    const productVariantId =
+      typeof request.query.productVariantId === 'string'
+        ? request.query.productVariantId.trim()
+        : undefined;
 
     if (
       !Number.isSafeInteger(limit) ||
@@ -213,6 +241,9 @@ export const listMyDesigns = async (request, response, next) => {
     const filter = {
       ...getOwnerFilter(request.shopper),
       ...(productId ? { productId } : {}),
+      ...(productVariantId !== undefined
+        ? { productVariantId: productVariantId || null }
+        : {}),
     };
     const [designs, total] = await Promise.all([
       Design.find(filter)
@@ -352,13 +383,23 @@ export const listDesignRevisions = async (request, response, next) => {
       throw makeHttpError(400, 'Design ID is invalid.');
     }
     const design = await getDesignByOwner(request.params.id, request.shopper)
-      .select('_id shop')
+      .select('_id shop productId productVariantId')
       .lean();
     if (!design) throw makeHttpError(404, 'Design not found.');
 
+    const productId =
+      typeof request.query.productId === 'string' && request.query.productId.trim()
+        ? request.query.productId.trim()
+        : design.productId;
+    const productVariantId =
+      typeof request.query.productVariantId === 'string'
+        ? request.query.productVariantId.trim() || null
+        : design.productVariantId || null;
     const revisions = await DesignRevision.find({
       designId: design._id,
       shop: design.shop,
+      productId,
+      productVariantId,
     })
       .sort({ version: -1 })
       .limit(MAX_REVISIONS)
@@ -410,6 +451,7 @@ export const restoreDesignRevision = async (request, response, next) => {
       if (!revision) throw makeHttpError(404, 'Design revision not found.');
 
       design.productId = revision.productId;
+      design.productVariantId = revision.productVariantId || null;
       design.canvasState = revision.canvasState;
       design.markModified('canvasState');
       design.thumbnailUrl = revision.thumbnailUrl;
@@ -541,14 +583,14 @@ export const moderateFeedback = async (request, response, next) => {
 
     // 1. Role & Login Guard
     const approverEmail = request.user?.email || request.shopper?.email || request.body?.email;
-    const approverRole = request.user?.role || request.shopper?.role || 'customer';
+    const approverRole = request.user?.role || 'merchant';
 
     if (status === 'approved') {
       if (!approverEmail) {
         throw makeHttpError(401, 'User not logged in. An authenticated user is required to approve feedback.');
       }
 
-      if (!['customer', 'merchant', 'staff', 'admin'].includes(approverRole)) {
+      if (!['merchant', 'staff', 'admin'].includes(approverRole)) {
         throw makeHttpError(403, 'Forbidden: Insufficient role permissions to approve feedback.');
       }
 
@@ -698,12 +740,12 @@ export const generateShareToken = async (request, response, next) => {
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * DESIGNER & MERCHANT TEMPLATE & REVIEW WORKFLOWS
+ * MERCHANT TEMPLATE & REVIEW WORKFLOWS
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 /**
- * Create a reusable design template (Designers and Merchants).
+ * Create a reusable design template (Merchants).
  */
 export const createTemplate = async (request, response, next) => {
   try {
@@ -728,13 +770,13 @@ export const createTemplate = async (request, response, next) => {
       thumbnailUrl: thumbnail,
       isTemplate: true,
       templateCategory: templateCategory ? String(templateCategory).trim().toLowerCase() : 'general',
-      createdByRole: request.user?.role || 'designer',
+      createdByRole: request.user?.role || 'merchant',
       createdByUserId: request.user?._id ? String(request.user._id) : null,
       status: 'saved',
       version: 1,
     });
 
-    logSuccess(`[createTemplate] Template "${title}" created by ${request.user?.email || 'designer'}`);
+    logSuccess(`[createTemplate] Template "${title}" created by ${request.user?.email || 'merchant'}`);
 
     return response.status(201).json({
       success: true,
@@ -803,7 +845,7 @@ export const getTemplateById = async (request, response, next) => {
 };
 
 /**
- * Review, adjust, or modify a customer design canvas state (Designers & Merchants).
+ * Review, adjust, or modify a design canvas state (Merchants).
  */
 export const reviewAndModifyDesign = async (request, response, next) => {
   try {
@@ -854,4 +896,3 @@ export const reviewAndModifyDesign = async (request, response, next) => {
     return next(error);
   }
 };
-

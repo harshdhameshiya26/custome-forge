@@ -19,6 +19,7 @@ const BCRYPT_ROUNDS = 12;
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes (600 seconds)
 const LOCKOUT_1_HOUR_MS = 60 * 60 * 1000; // 1 hour (60 minutes)
 const LOCKOUT_24_HOURS_MS = 24 * 60 * 60 * 1000; // 24 hours (1440 minutes)
+const VALID_ROLES = ['merchant', 'supplier', 'designer', 'customer', 'store_owner', 'production_staff'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -46,18 +47,20 @@ const formatLockoutDuration = (lockUntil) => {
 
 /**
  * Dispatch an OTP via Nodemailer (emailService).
- * Best-effort: logs errors without crashing the caller.
+ * Log delivery failures and propagate them so callers do not report success when
+ * the verification code was not sent.
  *
  * @param {string} to       — Recipient email
  * @param {string} otp      — 6-digit code
  * @param {string} fullName — Recipient display name for salutation
  */
-const deliverOtp = (to, otp, fullName = '') => {
-  return sendOtpEmail({ to, otp, fullName, expiryMs: OTP_TTL_MS }).catch((err) => {
+const deliverOtp = async (to, otp, fullName = '') => {
+  try {
+    await sendOtpEmail({ to, otp, fullName, expiryMs: OTP_TTL_MS });
+  } catch (err) {
     logError(`[EmailService] OTP delivery failed to ${to}: ${err.message}`);
-    // Intentionally not rethrowing — OTP is already saved in DB;
-    // the user can request a new code if email is not received.
-  });
+    throw err;
+  }
 };
 
 /** Build the safe public token pair response object. */
@@ -78,13 +81,12 @@ const buildTokenResponse = (user, accessToken, refreshToken) => ({
  * - Saves user with isVerified: false.
  * - Immediately issues an OTP to the provided email.
  */
-export const registerUser = async (req, res, next) => {
+const createUserAccount = async (req, res, next, role) => {
   try {
     const {
       fullName,
       email,
       password,
-      role = 'customer',
       category,
       supplierCategory,
       shop,
@@ -118,7 +120,7 @@ export const registerUser = async (req, res, next) => {
       fullName,
       email,
       passwordHash,
-      role: ['customer', 'designer', 'merchant', 'supplier'].includes(role) ? role : 'customer',
+      role,
       supplierCategory: resolvedCategory,
       shop: shop || null,
       shopifyCustomerId: shopifyCustomerId || null,
@@ -129,8 +131,7 @@ export const registerUser = async (req, res, next) => {
       otpAttempts: 0,
     });
 
-    // Best-effort OTP delivery — do not block registration on failure
-    deliverOtp(email, otp, fullName);
+    await deliverOtp(email, otp, fullName);
 
     logSuccess(`[registerUser] New ${user.role} registered: ${email}`);
 
@@ -149,6 +150,12 @@ export const registerUser = async (req, res, next) => {
     logError(`[registerUser] ${error.message}`);
     return next(error);
   }
+};
+
+export const registerUser = (req, res, next) => {
+  const requestedRole = req.body?.role ? String(req.body.role).toLowerCase().trim() : 'merchant';
+  const role = VALID_ROLES.includes(requestedRole) ? requestedRole : 'merchant';
+  return createUserAccount(req, res, next, role);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,6 +182,13 @@ export const requestOtp = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         message: 'If an account with that email exists, a verification code has been sent.',
+      });
+    }
+
+    if (!VALID_ROLES.includes(user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This account role is no longer permitted to sign in.',
       });
     }
 
@@ -213,7 +227,7 @@ export const requestOtp = async (req, res, next) => {
     await user.save();
 
     const recipientEmail = user.pendingEmail || user.email;
-    deliverOtp(recipientEmail, otp, user.fullName);
+    await deliverOtp(recipientEmail, otp, user.fullName);
 
     logSuccess(`[requestOtp] OTP issued for: ${recipientEmail}`);
 
@@ -255,6 +269,13 @@ export const verifyOtp = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'No account found with this email address. Please check the spelling or register first.',
+      });
+    }
+
+    if (!VALID_ROLES.includes(user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This account role is no longer permitted to sign in.',
       });
     }
 
@@ -372,11 +393,22 @@ export const verifyOtp = async (req, res, next) => {
       user.pendingEmail = null;
     }
 
-    // Issue tokens
-    const refreshToken = crypto.randomBytes(40).toString('base64url');
-    user.refreshTokenHash = hashToken(refreshToken);
-    user.lastLoginAt = new Date();
+    if (pendingEmail) {
+      const refreshToken = crypto.randomBytes(40).toString('base64url');
+      user.refreshTokenHash = hashToken(refreshToken);
+      user.lastLoginAt = new Date();
+    }
     await user.save();
+
+    logSuccess(`[verifyOtp] Email verified for: ${email}`);
+
+    if (!pendingEmail) {
+      return res.status(200).json({
+        success: true,
+        message: 'Email verified successfully. Sign in with your email and password.',
+        data: { user: user.toJSON() },
+      });
+    }
 
     const accessToken = signAccessToken({
       id: user._id,
@@ -387,11 +419,9 @@ export const verifyOtp = async (req, res, next) => {
     });
     const signedRefreshToken = signRefreshToken({ id: user._id });
 
-    logSuccess(`[verifyOtp] Email verified for: ${email}`);
-
     return res.status(200).json({
       success: true,
-      message: 'Email verified successfully. You are now logged in.',
+      message: 'Email updated and verified successfully.',
       data: buildTokenResponse(user, accessToken, signedRefreshToken),
     });
   } catch (error) {
@@ -433,6 +463,13 @@ export const loginUser = async (req, res, next) => {
 
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password.',
+      });
+    }
+
+    if (!VALID_ROLES.includes(user.role)) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.',
@@ -502,7 +539,11 @@ export const refreshToken = async (req, res, next) => {
       '+refreshTokenHash',
     );
 
-    if (!user || user.refreshTokenHash !== hashToken(incomingRefreshToken)) {
+    if (
+      !user ||
+      !VALID_ROLES.includes(user.role) ||
+      user.refreshTokenHash !== hashToken(incomingRefreshToken)
+    ) {
       return res.status(401).json({
         success: false,
         message: 'Refresh token has been revoked. Please log in again.',
@@ -598,7 +639,7 @@ export const updateProfile = async (req, res, next) => {
       user.otpAttempts = 0;
       requiresReVerification = true;
 
-      deliverOtp(email, otp, user.fullName);
+      await deliverOtp(email, otp, user.fullName);
     }
 
     await user.save();
@@ -701,8 +742,7 @@ export const deleteUser = async (req, res, next) => {
  * Register a dedicated supplier account with category selection.
  */
 export const registerSupplier = async (req, res, next) => {
-  req.body.role = 'supplier';
-  return registerUser(req, res, next);
+  return createUserAccount(req, res, next, 'supplier');
 };
 
 /**
@@ -711,7 +751,7 @@ export const registerSupplier = async (req, res, next) => {
 export const listSuppliers = async (req, res, next) => {
   try {
     const { category } = req.query;
-    const filter = { role: 'supplier', deletedAt: null, isVerified: true };
+    const filter = { role: 'supplier', deletedAt: null, isVerified: true, isBlocked: false };
     if (category) {
       filter.supplierCategory = new RegExp(`^${category.trim()}$`, 'i');
     }
@@ -726,6 +766,49 @@ export const listSuppliers = async (req, res, next) => {
     });
   } catch (error) {
     logError(`[listSuppliers] ${error.message}`);
+    return next(error);
+  }
+};
+
+/**
+ * List Merchants and Suppliers for the quick-reference directory below login.
+ */
+export const listDirectory = async (req, res, next) => {
+  try {
+    const { role, category, search } = req.query;
+    const filter = { deletedAt: null, isBlocked: false };
+
+    if (role && role !== 'all') {
+      filter.role = role.toLowerCase().trim();
+    } else {
+      filter.role = { $in: ['merchant', 'supplier', 'designer', 'store_owner', 'production_staff'] };
+    }
+
+    if (category) {
+      filter.supplierCategory = new RegExp(`^${category.trim()}$`, 'i');
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      filter.$or = [
+        { fullName: new RegExp(q, 'i') },
+        { email: new RegExp(q, 'i') },
+        { supplierCategory: new RegExp(q, 'i') },
+      ];
+    }
+
+    const directory = await User.find(filter)
+      .select('fullName email role supplierCategory isVerified shop lastLoginAt createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: directory.length,
+      data: directory,
+    });
+  } catch (error) {
+    logError(`[listDirectory] ${error.message}`);
     return next(error);
   }
 };

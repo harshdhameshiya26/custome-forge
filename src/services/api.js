@@ -19,9 +19,60 @@ const getBaseUrl = () => {
   return 'http://localhost:5000/api';
 };
 
+export function reportClientError(details) {
+  if (typeof window === 'undefined') return;
+
+  const baseUrl = getBaseUrl().replace(/\/+$/, '');
+  const payload = {
+    category: String(details?.category || 'browser').slice(0, 64),
+    message: String(details?.message || 'Unknown client error').slice(0, 2000),
+    stack: String(details?.stack || '').slice(0, 8000),
+    source: String(details?.source || '').slice(0, 500),
+    pathname: window.location.pathname.slice(0, 500),
+    status: Number.isInteger(details?.status) ? details.status : undefined,
+    response: typeof details?.response === 'string'
+      ? details.response.slice(0, 2000)
+      : undefined,
+  };
+
+  fetch(`${baseUrl}/client-errors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch((error) => {
+    console.warn('[CustomForge Error Reporting] Unable to send error to backend:', error?.message);
+  });
+}
+
 /** Standard HTTP request wrapper with robust error fallback */
-async function request(endpoint, options = {}) {
-  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('customforge_token')) || '';
+async function request(
+  endpoint,
+  options = {},
+  { strict = false, sameOriginOnly = false, shopifyAuth = false } = {},
+) {
+  let token = (typeof localStorage !== 'undefined' && localStorage.getItem('customforge_token')) || '';
+  if (shopifyAuth) {
+    if (typeof window === 'undefined' || typeof window.shopify?.idToken !== 'function') {
+      const error = new Error('Shopify authentication is unavailable. Open this feature inside the Shopify admin.');
+      reportClientError({
+        category: 'shopify-auth',
+        message: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
+    try {
+      token = await window.shopify.idToken();
+    } catch (error) {
+      reportClientError({
+        category: 'shopify-auth',
+        message: error?.message || 'Unable to retrieve the Shopify session token.',
+        stack: error?.stack,
+      });
+      throw error;
+    }
+  }
 
   // Forward Shopify shop context if present in URL
   let shop = '';
@@ -39,45 +90,71 @@ async function request(endpoint, options = {}) {
   };
 
   const config = { ...options, headers };
-  const baseUrl = getBaseUrl();
-
-  try {
-    const response = await fetch(`${baseUrl}${endpoint}`, config);
-    if (response.ok) {
-      return await response.json().catch(() => ({ success: true, count: 0, data: [] }));
-    }
-
-    // If 404 on relative '/api', attempt direct backend port 5000 fallback
-    if (baseUrl === '/api') {
-      try {
-        const fallbackRes = await fetch(`http://localhost:5000/api${endpoint}`, config);
-        if (fallbackRes.ok) {
-          return await fallbackRes.json().catch(() => ({ success: true, count: 0, data: [] }));
-        }
-      } catch {
-        // Fallback unavailable
+  const baseUrl = sameOriginOnly ? '/api' : getBaseUrl();
+  const readResponse = async (response) => {
+    const fallback = { success: true, count: 0, data: [] };
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      if (strict) {
+        throw new Error(`The API returned a non-JSON response (${response.status}) for ${endpoint}.`);
       }
+      return fallback;
     }
 
-    const data = await response.json().catch(() => ({}));
+    if (strict && (!response.ok || data?.success === false)) {
+      const error = new Error(
+        data?.message ||
+          (Array.isArray(data?.errors) && data.errors.length
+            ? data.errors.map((item) => item.message).join(' ')
+            : `Request failed (${response.status}).`),
+      );
+      error.status = response.status;
+      error.data = data;
+      error.action = data?.action;
+      error.validationErrors = data?.errors || [];
+      throw error;
+    }
     return data;
-  } catch (err) {
-    // If relative '/api' threw (e.g. network failure), try direct localhost:5000
-    if (baseUrl === '/api') {
-      try {
-        const fallbackRes = await fetch(`http://localhost:5000/api${endpoint}`, config);
-        if (fallbackRes.ok) {
-          return await fallbackRes.json().catch(() => ({ success: true, count: 0, data: [] }));
-        }
-      } catch {
-        // Fallback unavailable
-      }
-    }
+  };
 
-    console.warn(`[CustomForge API] ${endpoint}:`, err.message);
-    // Return empty payload so UI displays 0/empty state gracefully rather than crashing with red banner
-    return { success: true, count: 0, data: [] };
+  const urls = [baseUrl + endpoint];
+  if (baseUrl === '/api' && typeof window !== 'undefined' && !sameOriginOnly) {
+    urls.push(`http://localhost:5000/api${endpoint}`);
   }
+
+  let lastError;
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, config);
+      const data = await readResponse(response);
+      if (strict || response.ok) return data;
+      lastError = new Error(data?.message || `Request failed (${response.status}).`);
+    } catch (error) {
+      if (error?.status || !lastError) lastError = error;
+    }
+  }
+
+  if (endpoint !== '/client-errors' && lastError) {
+    const responseMessage = lastError.data?.message;
+    reportClientError({
+      category: 'api-request',
+      message: `${config.method || 'GET'} ${endpoint.split('?')[0]} failed${lastError.status ? ` (HTTP ${lastError.status})` : ''}: ${lastError.message}`,
+      stack: [
+        lastError.stack,
+        responseMessage && responseMessage !== lastError.message
+          ? `Server response: ${responseMessage}`
+          : '',
+      ].filter(Boolean).join('\n'),
+      status: lastError.status,
+      response: responseMessage,
+    });
+  }
+  if (strict) throw lastError || new Error(`Unable to reach ${endpoint}.`);
+  console.warn(`[CustomForge API] ${endpoint}:`, lastError?.message || 'Request failed.');
+  return { success: true, count: 0, data: [] };
 }
 
 
@@ -90,12 +167,43 @@ export const api = {
     },
   },
 
-  // ── Customers ─────────────────────────────────────────────────────────────
-  customers: {
-    list: (params = {}) => {
+  // ── User authentication and account ──────────────────────────────────────
+  users: {
+    register: (payload) =>
+      request('/users/register', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    requestOtp: (payload) =>
+      request('/users/request-otp', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    verifyOtp: (payload) =>
+      request('/users/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    login: (payload) =>
+      request('/users/login', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    refreshToken: (payload) =>
+      request('/users/refresh-token', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    profile: () => request('/users/profile', {}, { strict: true }),
+    directory: (params = {}) => {
       const query = new URLSearchParams(params).toString();
-      return request(`/customers${query ? `?${query}` : ''}`);
+      return request(`/users/directory${query ? `?${query}` : ''}`);
     },
+    logout: () =>
+      request('/users/logout', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }, { strict: true }),
   },
 
   // ── Design Templates ──────────────────────────────────────────────────────
@@ -118,28 +226,86 @@ export const api = {
       const query = new URLSearchParams(params).toString();
       return request(`/library/merchant/all${query ? `?${query}` : ''}`);
     },
+    getById: (itemId) => request(`/library/${itemId}`),
     save: (payload) =>
-      request('/library/save', { method: 'POST', body: JSON.stringify(payload) }),
+      request('/library/save', { method: 'POST', body: JSON.stringify(payload) }, { strict: true }),
     remove: (itemId) => request(`/library/${itemId}`, { method: 'DELETE' }),
     apply: (itemId, payload) =>
       request(`/library/${itemId}/apply`, { method: 'POST', body: JSON.stringify(payload) }),
+  },
+
+  // ── Product-scoped design history ────────────────────────────────────────
+  designs: {
+    list: (params = {}) => {
+      const query = new URLSearchParams(params).toString();
+      return request(`/designs${query ? `?${query}` : ''}`, {}, { strict: true });
+    },
+
+    create: (payload) =>
+      request('/designs', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    update: (designId, payload) =>
+      request(`/designs/${designId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
+    revisions: (designId, params = {}) => {
+      const query = new URLSearchParams(params).toString();
+      return request(
+        `/designs/${designId}/revisions${query ? `?${query}` : ''}`,
+        {},
+        { strict: true },
+      );
+    },
+    revision: (designId, version, params = {}) => {
+      const query = new URLSearchParams(params).toString();
+      return request(
+        `/designs/${designId}/revisions/${version}${query ? `?${query}` : ''}`,
+        {},
+        { strict: true },
+      );
+    },
+  },
+
+  // ── Shopify storefront publishing ────────────────────────────────────────
+  shopify: {
+    collections: () =>
+      request('/shopify/collections', {}, { strict: true, sameOriginOnly: true, shopifyAuth: true }),
+    variants: (productId) => {
+      const query = new URLSearchParams({ productId }).toString();
+      return request(
+        `/shopify/variants?${query}`,
+        {},
+        { strict: true, sameOriginOnly: true, shopifyAuth: true },
+      );
+    },
+    publish: (payload) =>
+      request('/shopify/publish', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true, sameOriginOnly: true, shopifyAuth: true }),
   },
 
   // ── Production Queue ───────────────────────────────────────────────────────
   production: {
     list: (params = {}) => {
       const query = new URLSearchParams(params).toString();
-      return request(`/production${query ? `?${query}` : ''}`);
+      return request(`/production/queue${query ? `?${query}` : ''}`);
     },
     update: (orderId, payload) =>
-      request(`/production/${orderId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+      request(`/production/queue/${encodeURIComponent(orderId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
   },
 
   // ── Custom Orders & Tracking ───────────────────────────────────────────────
   orders: {
     list: (params = {}) => {
       const query = new URLSearchParams(params).toString();
-      return request(`/orders${query ? `?${query}` : ''}`);
+      return request(`/orders${query ? `?${query}` : ''}`, {}, { strict: true });
     },
     getById: (orderId) => request(`/orders/${orderId}`),
     getTimeline: (orderId) => request(`/orders/${orderId}/timeline`),
@@ -182,18 +348,20 @@ export const api = {
   schedules: {
     list: (params = {}) => {
       const query = new URLSearchParams(params).toString();
-      return request(`/schedules${query ? `?${query}` : ''}`);
+      return request(`/schedules${query ? `?${query}` : ''}`, {}, { strict: true });
     },
-    getById: (scheduleId) => request(`/schedules/${scheduleId}`),
+    getById: (scheduleId) => request(`/schedules/${scheduleId}`, {}, { strict: true }),
     create: (payload) =>
-      request('/schedules', { method: 'POST', body: JSON.stringify(payload) }),
+      request('/schedules', { method: 'POST', body: JSON.stringify(payload) }, { strict: true }),
     requestOtp: (scheduleId) =>
-      request(`/schedules/${scheduleId}/request-otp`, { method: 'POST' }),
+      request(`/schedules/${scheduleId}/request-otp`, { method: 'POST' }, { strict: true }),
     verifyOtp: (scheduleId, otp) =>
       request(`/schedules/${scheduleId}/verify-otp`, {
         method: 'POST',
         body: JSON.stringify({ otp }),
-      }),
+      }, { strict: true }),
+    sendEmail: (scheduleId) =>
+      request(`/schedules/${scheduleId}/send-email`, { method: 'POST' }, { strict: true }),
   },
 
   // ── Artwork Validation & Feasibility ──────────────────────────────────────
@@ -207,7 +375,12 @@ export const api = {
   // ── Suppliers & Categories ────────────────────────────────────────────────
   suppliers: {
     list: (category = '') =>
-      request(`/schedules/suppliers${category ? `?category=${category}` : ''}`),
+      request(`/schedules/suppliers${category ? `?category=${category}` : ''}`, {}, { strict: true }),
+    register: (payload) =>
+      request('/suppliers/register', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, { strict: true }),
   },
 
   // ── Production Routing Rules ──────────────────────────────────────────────

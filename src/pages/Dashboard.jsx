@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Page,
@@ -38,41 +38,39 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState(EMPTY_METRICS);
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+  const fetchDashboard = useCallback(async () => {
+    setRefreshing(true);
     setError(null);
+    try {
+      const json = await api.analytics.dashboard();
+      if (json?.data?.summary) {
+        setMetrics({
+          totalOrders: json.data.summary.totalOrders ?? 0,
+          pendingApproval: json.data.summary.pendingApproval ?? 0,
+          inProduction: json.data.summary.inProduction ?? 0,
+          completed: json.data.summary.completed ?? 0,
+        });
+      }
+      if (Array.isArray(json?.data?.recentOrders)) {
+        setRecentOrders(json.data.recentOrders);
+      }
+    } catch (err) {
+      console.warn('Dashboard fetch notice:', err.message);
+      if (metrics.totalOrders === 0) {
+        setMetrics(EMPTY_METRICS);
+        setRecentOrders([]);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [metrics.totalOrders]);
 
-    api.analytics
-      .dashboard()
-      .then((json) => {
-        if (cancelled) return;
-        if (json?.data?.summary) {
-          setMetrics({
-            totalOrders: json.data.summary.totalOrders ?? 0,
-            pendingApproval: json.data.summary.pendingApproval ?? 0,
-            inProduction: json.data.summary.inProduction ?? 0,
-            completed: json.data.summary.completed ?? 0,
-          });
-        }
-        if (Array.isArray(json?.data?.recentOrders)) {
-          setRecentOrders(json.data.recentOrders);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn('Dashboard fetch notice:', err.message);
-          setMetrics(EMPTY_METRICS);
-          setRecentOrders([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
+  useEffect(() => {
+    fetchDashboard();
   }, []);
 
 
@@ -100,6 +98,9 @@ export default function Dashboard() {
         content: '+ Create New Design',
         onAction: () => navigate(`${basePath}/editor`),
       }}
+      secondaryActions={[
+        { content: 'Refresh', onAction: fetchDashboard, loading: refreshing },
+      ]}
     >
       <BlockStack gap="500">
         {/* Error Banner */}

@@ -18,7 +18,7 @@ const approvalMetaSchema = new mongoose.Schema(
   {
     approvedAt:   { type: Date,   required: true },
     approverId:   { type: String, required: true },   // customerId or staffId
-    approverRole: { type: String, required: true },   // 'customer' | 'staff'
+    approverRole: { type: String, required: true },   // 'merchant' | 'supplier' | 'staff'
     ipAddress:    { type: String, default: null },
     userAgent:    { type: String, default: null },
     // fingerprint recorded at approval time for tamper-detection
@@ -55,6 +55,11 @@ const designRevisionSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    productVariantId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     canvasState: {
       type: mongoose.Schema.Types.Mixed,
       required: true,
@@ -74,12 +79,12 @@ const designRevisionSchema = new mongoose.Schema(
       required: true,
     },
 
-    /** Who triggered this revision: 'customer' | 'staff' */
+    /** Who triggered this revision: 'merchant' | 'supplier' | 'staff' */
     changedBy: {
       type: String,
-      enum: ['customer', 'staff'],
+      enum: ['merchant', 'supplier', 'staff'],
       required: true,
-      default: 'customer',
+      default: 'merchant',
     },
     /** Optional free-text note describing what changed in this version */
     changeNote: {
@@ -140,6 +145,12 @@ const designRevisionSchema = new mongoose.Schema(
 
 // Unique version per design — atomic upsert guard
 designRevisionSchema.index({ designId: 1, version: -1 }, { unique: true });
+designRevisionSchema.index({
+  designId: 1,
+  productId: 1,
+  productVariantId: 1,
+  version: -1,
+});
 
 // Fast lookup for "get approved revision of a design"
 designRevisionSchema.index(

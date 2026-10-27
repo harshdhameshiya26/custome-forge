@@ -51,15 +51,25 @@ const scheduleSchema = new mongoose.Schema(
       lowercase: true,
       index: true,
     },
-    // Array of selected design IDs: strictly fixed between 25 and 100 designs
+    // Legacy saved-design schedules remain available alongside paid-order schedules.
     designIds: {
       type: [String],
-      required: [true, 'designIds array is required'],
+      default: [],
       validate: {
         validator: function (val) {
-          return Array.isArray(val) && val.length >= 25 && val.length <= 100;
+          return Array.isArray(val);
         },
-        message: 'A schedule must contain strictly between 25 and 100 design IDs (received {VALUE.length})',
+        message: 'designIds must be an array.',
+      },
+    },
+    orderIds: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (val) {
+          return Array.isArray(val);
+        },
+        message: 'orderIds must be an array.',
       },
     },
     // Target production schedule timestamp
@@ -110,6 +120,23 @@ const scheduleSchema = new mongoose.Schema(
     },
     sentToSupplierAt: {
       type: Date,
+      default: null,
+    },
+    supplierEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+    supplierEmailStatus: {
+      type: String,
+      enum: ['pending', 'sending', 'sent', 'failed'],
+      default: 'pending',
+    },
+    supplierEmailSendingAt: {
+      type: Date,
+      default: null,
+    },
+    supplierEmailError: {
+      type: String,
       default: null,
     },
     notes: {

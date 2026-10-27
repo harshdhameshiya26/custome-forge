@@ -359,7 +359,7 @@ export const submitProofResponse = async (req, res, next) => {
       message,
       feedback,
       author,
-      role = 'CUSTOMER',
+      role = 'MERCHANT',
     } = req.body;
 
     // 1. Input sanitization & normalization
@@ -392,10 +392,10 @@ export const submitProofResponse = async (req, res, next) => {
     const userDisplayName = req.user?.fullName || req.user?.email;
     const cleanAuthor = (author && typeof author === 'string' && author.trim())
       ? author.trim()
-      : (userDisplayName || (role === 'MERCHANT' ? 'Merchant' : 'Customer'));
-    const cleanRole = ['CUSTOMER', 'MERCHANT', 'SYSTEM'].includes(String(role).toUpperCase())
+      : (userDisplayName || (role === 'MERCHANT' ? 'Merchant' : 'Supplier'));
+    const cleanRole = ['MERCHANT', 'SUPPLIER', 'SYSTEM'].includes(String(role).toUpperCase())
       ? String(role).toUpperCase()
-      : (req.user?.role === 'merchant' ? 'MERCHANT' : 'CUSTOMER');
+      : (req.user?.role === 'supplier' ? 'SUPPLIER' : 'MERCHANT');
 
     // 2. Fetch current proof
     let existingProof = null;
@@ -491,12 +491,13 @@ export const submitProofResponse = async (req, res, next) => {
       if (!req.user || !req.user.email) {
         return res.status(401).json({
           success: false,
-          message: 'User not logged in. You must be logged in with an authorized role to approve this proof.',
+          message: 'User not logged in',
+          error: 'Unauthorized',
         });
       }
 
-      const allowedRoles = ['customer', 'merchant', 'admin', 'staff', 'designer'];
-      const userRole = String(req.user.role || 'customer').toLowerCase().trim();
+      const allowedRoles = ['merchant', 'supplier', 'designer', 'store_owner', 'production_staff', 'customer', 'admin', 'staff'];
+      const userRole = String(req.user.role || '').toLowerCase().trim();
       if (!allowedRoles.includes(userRole)) {
         return res.status(403).json({
           success: false,
@@ -729,18 +730,22 @@ export const getProofsByOrderId = async (req, res, next) => {
  */
 export const requestProofApprovalOtp = async (req, res, next) => {
   try {
-    const { proofId } = req.params;
-    const recipientEmail = req.user?.email || req.body?.email;
-
-    if (!recipientEmail) {
-      throw makeHttpError(400, 'User email is required for OTP dispatch.');
+    if (!req.user || !req.user.email) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not logged in',
+        error: 'Unauthorized',
+      });
     }
+
+    const { proofId } = req.params;
+    const recipientEmail = req.user.email || req.body?.email;
 
     const result = await OtpService.generateAndSendOtp({
       email: recipientEmail,
       action: 'PROOF_APPROVAL',
       referenceId: proofId,
-      fullName: req.user?.fullName || 'Customer',
+      fullName: req.user?.fullName || 'Merchant',
     });
 
     return res.status(200).json(result);
@@ -756,6 +761,13 @@ export const requestProofApprovalOtp = async (req, res, next) => {
  */
 export const sendProofLink = async (req, res, next) => {
   try {
+    if (!req.user || !req.user.email) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not logged in',
+        error: 'Unauthorized',
+      });
+    }
     const { proofId } = req.params;
     const { recipientEmail, customerName, note, otp } = req.body;
 
@@ -825,4 +837,3 @@ export const sendProofLink = async (req, res, next) => {
     next(error);
   }
 };
-
