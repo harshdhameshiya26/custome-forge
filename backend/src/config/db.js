@@ -30,10 +30,10 @@ export const connectDB = async () => {
       autoIndex: process.env.NODE_ENV !== 'production',
     });
 
-    logSuccess('🚀 MongoDB connected');
+    logSuccess(' MongoDB connected');
     return conn.connection;
   } catch (error) {
-    logError(`❌ MongoDB connection failed: ${error.message}`);
+    logError(` MongoDB connection failed: ${error.message}`);
     throw error;
   }
 };

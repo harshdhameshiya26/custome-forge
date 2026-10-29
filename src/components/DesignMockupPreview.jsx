@@ -111,12 +111,34 @@ function TemplateVectorGraphic({ templateName, color = '#111827', width = 120, h
     );
   }
 
-  if (norm.includes('logo') || norm.includes('minimal')) {
+  if (norm.includes('logo') || norm.includes('minimal') || norm.includes('brand')) {
     return (
       <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
         <polygon points="60,18 95,78 25,78" stroke={color} strokeWidth="5" strokeLinejoin="round" fill="none" />
         <polygon points="60,38 78,70 42,70" fill={color} opacity="0.6" />
         <circle cx="60" cy="18" r="5" fill={color} />
+      </svg>
+    );
+  }
+
+  if (norm.includes('birthday') || norm.includes('celebration')) {
+    return (
+      <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
+        <rect x="25" y="45" width="70" height="42" rx="4" stroke={color} strokeWidth="4" />
+        <line x1="25" y1="65" x2="95" y2="65" stroke={color} strokeWidth="3" />
+        <line x1="60" y1="45" x2="60" y2="87" stroke={color} strokeWidth="4" />
+        <path d="M48 35C40 25 60 20 60 35C60 20 80 25 72 35" stroke={color} strokeWidth="4" strokeLinecap="round" />
+        <circle cx="35" cy="20" r="3" fill={color} />
+        <circle cx="85" cy="20" r="3" fill={color} />
+      </svg>
+    );
+  }
+
+  if (norm.includes('2026') || norm.includes('year')) {
+    return (
+      <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
+        <polygon points="60,10 72,38 102,40 78,60 86,90 60,72 34,90 42,60 18,40 48,38" stroke={color} strokeWidth="4" fill="none" strokeLinejoin="round" />
+        <circle cx="60" cy="50" r="10" fill={color} opacity="0.75" />
       </svg>
     );
   }
@@ -220,10 +242,12 @@ export default function DesignMockupPreview({
   textRotation = 0,
   additionalTextLayers = [],
   additionalGraphicLayers = [],
+  additionalImageLayers = [],
   // Component layout
   size = 'md',
   height,
   angle,
+  designOnly = false,
 }) {
   // Normalize text from any prop name used across screens
   const displayText = (customText || designText || graphicText || '').trim();
@@ -311,6 +335,9 @@ export default function DesignMockupPreview({
       height: `${printArea.height * 100}%`,
     }
     : defaultZone;
+  const previewZone = designOnly
+    ? { top: '8%', left: '8%', width: '84%', height: '84%' }
+    : zone;
   const containerHeight = height ? (typeof height === 'number' ? `${height}px` : height) : HEIGHT_PRESETS[size] || HEIGHT_PRESETS.md;
   return (
     <div
@@ -320,7 +347,7 @@ export default function DesignMockupPreview({
         height: containerHeight,
         borderRadius: '12px',
         overflow: 'hidden',
-        backgroundColor: '#e5e7eb',
+        backgroundColor: designOnly ? '#ffffff' : '#e5e7eb',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -329,7 +356,7 @@ export default function DesignMockupPreview({
       }}
     >
       {/* ── BASE PRODUCT GARMENT IMAGE ── */}
-      <img
+      {!designOnly && <img
         src={baseMockupImg}
         alt={productLabel || `${resolvedCategory} mockup`}
         style={{
@@ -342,10 +369,10 @@ export default function DesignMockupPreview({
           pointerEvents: 'none',
         }}
         loading="lazy"
-      />
+      />}
 
       {/* ── DYNAMIC COLOR TINT OVERLAY ACROSS ALL PRODUCTS ── */}
-      {!productImage && resolvedCategory === 'tshirt' && (isNavy || isCrimson) && (
+      {!designOnly && !productImage && resolvedCategory === 'tshirt' && (isNavy || isCrimson) && (
         <div
           style={{
             position: 'absolute',
@@ -359,7 +386,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {!productImage && resolvedCategory === 'hoodie' && isForestGreen && (
+      {!designOnly && !productImage && resolvedCategory === 'hoodie' && isForestGreen && (
         <div
           style={{
             position: 'absolute',
@@ -373,7 +400,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {!productImage && resolvedCategory === 'hoodie' && isDarkColor && (
+      {!designOnly && !productImage && resolvedCategory === 'hoodie' && isDarkColor && (
         <div
           style={{
             position: 'absolute',
@@ -387,7 +414,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {!productImage && resolvedCategory === 'mug' && colorStr === '#0284c7' && (
+      {!designOnly && !productImage && resolvedCategory === 'mug' && colorStr === '#0284c7' && (
         <div
           style={{
             position: 'absolute',
@@ -401,7 +428,7 @@ export default function DesignMockupPreview({
           }}
         />
       )}
-      {!productImage && resolvedCategory === 'phone_case' && (colorStr === '#d97706' || colorNameStr.includes('amber')) && (
+      {!designOnly && !productImage && resolvedCategory === 'phone_case' && (colorStr === '#d97706' || colorNameStr.includes('amber')) && (
         <div
           style={{
             position: 'absolute',
@@ -420,58 +447,100 @@ export default function DesignMockupPreview({
       <div
         style={{
           position: 'absolute',
-          top: zone.top,
-          left: zone.left,
-          width: zone.width,
-          height: zone.height,
+          top: previewZone.top,
+          left: previewZone.left,
+          width: previewZone.width,
+          height: previewZone.height,
           boxSizing: 'border-box',
           pointerEvents: 'none',
           overflow: 'hidden',
           transition: 'all 0.15s ease-out',
         }}
       >
-        {/* ── INDEPENDENT UPLOADED IMAGE / GRAPHIC LAYER ── */}
-        {(designImage || uploadedFileName) && (
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              transform: `translate(calc(-50% + ${effectiveImageX}px), calc(-50% + ${effectiveImageY}px)) rotate(${imageRotation}deg)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'transform 0.08s ease-out',
-              zIndex: 2,
-              pointerEvents: 'none',
-            }}
-          >
-            {designImage ? (
-              <img
-                src={designImage}
-                alt="Uploaded Artwork"
-                style={{
-                  maxWidth: '180px',
-                  maxHeight: `${Math.round(130 * (effectiveImageScale / 100))}px`,
-                  width: `${Math.round(110 * (effectiveImageScale / 100))}px`,
-                  height: 'auto',
-                  objectFit: 'contain',
-                  filter: isDarkColor ? 'brightness(1.1)' : 'none',
-                  display: 'block',
-                  transition: 'all 0.1s ease-out',
-                }}
-              />
-            ) : (
-              <div style={{ opacity: 0.95, overflow: 'hidden', transition: 'all 0.1s ease-out' }}>
-                <TemplateVectorGraphic
-                  templateName={uploadedFileName || displayText || 'Good Vibes'}
-                  color={effectiveTextColor}
-                  width={Math.round(60 * (effectiveImageScale / 100) + 20)}
-                  height={Math.round(45 * (effectiveImageScale / 100) + 10)}
+        {/* ── ALL UPLOADED IMAGES / GRAPHIC LAYER ── */}
+        {additionalImageLayers && additionalImageLayers.length > 0 ? (
+          additionalImageLayers
+            .filter((img) => img.visible !== false && img.url)
+            .map((img) => {
+              const s = Number(img.scale) || 80;
+              const x = Number(img.x) || 0;
+              const y = Number(img.y) || 0;
+              const rot = Number(img.rotation) || 0;
+              return (
+                <div
+                  key={img.id}
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) rotate(${rot}deg)`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 2,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <img
+                    src={img.url}
+                    alt={img.name || 'Uploaded Artwork'}
+                    style={{
+                      maxWidth: '180px',
+                      maxHeight: `${Math.round(130 * (s / 100))}px`,
+                      width: `${Math.round(110 * (s / 100))}px`,
+                      height: 'auto',
+                      objectFit: 'contain',
+                      filter: isDarkColor ? 'brightness(1.1)' : 'none',
+                      display: 'block',
+                      transition: 'all 0.1s ease-out',
+                    }}
+                  />
+                </div>
+              );
+            })
+        ) : (
+          (designImage || uploadedFileName) && (
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: `translate(calc(-50% + ${effectiveImageX}px), calc(-50% + ${effectiveImageY}px)) rotate(${imageRotation}deg)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'transform 0.08s ease-out',
+                zIndex: 2,
+                pointerEvents: 'none',
+              }}
+            >
+              {designImage ? (
+                <img
+                  src={designImage}
+                  alt="Uploaded Artwork"
+                  style={{
+                    maxWidth: '180px',
+                    maxHeight: `${Math.round(130 * (effectiveImageScale / 100))}px`,
+                    width: `${Math.round(110 * (effectiveImageScale / 100))}px`,
+                    height: 'auto',
+                    objectFit: 'contain',
+                    filter: isDarkColor ? 'brightness(1.1)' : 'none',
+                    display: 'block',
+                    transition: 'all 0.1s ease-out',
+                  }}
                 />
-              </div>
-            )}
-          </div>
+              ) : (
+                <div style={{ opacity: 0.95, overflow: 'hidden', transition: 'all 0.1s ease-out' }}>
+                  <TemplateVectorGraphic
+                    templateName={uploadedFileName || displayText || 'Good Vibes'}
+                    color={effectiveTextColor}
+                    width={Math.round(60 * (effectiveImageScale / 100) + 20)}
+                    height={Math.round(45 * (effectiveImageScale / 100) + 10)}
+                  />
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {additionalGraphicLayers.filter((layer) => layer.visible !== false).map((layer) => (
@@ -688,6 +757,7 @@ DesignMockupPreview.propTypes = {
   graphicText: PropTypes.string,
   designImage: PropTypes.string,
   uploadedFileName: PropTypes.string,
+  additionalImageLayers: PropTypes.array,
   fontFamily: PropTypes.string,
   textColor: PropTypes.string,
   isBold: PropTypes.bool,

@@ -221,11 +221,30 @@ export default function CustomerDesigns() {
                     <BlockStack gap="300">
                       {/* Real product mockup preview */}
                       <DesignMockupPreview
-                        designText={design.name || design.canvasState?.text || 'Custom Design'}
-                        designImage={design.thumbnailUrl || design.canvasState?.uploadedImageUrl}
+                        productId={design.canvasState?.productId || design.shopifyProductId}
+                        productType={design.canvasState?.productType || design.tags?.[0]}
+                        productImage={design.canvasState?.storeProductId ? design.canvasState?.productImage : undefined}
+                        productColor={design.canvasState?.productColor}
+                        productColorName={design.canvasState?.productColorName}
                         productLabel={design.tags?.[0] || design.shopifyProductId || 'T-Shirt'}
+                        customText={design.canvasState?.customText ?? design.canvasState?.text ?? design.name ?? ''}
+                        designImage={design.canvasState?.uploadedImageUrl}
+                        fontFamily={design.canvasState?.font}
+                        textColor={design.canvasState?.color}
+                        effect={design.canvasState?.effect}
+                        imageScale={design.canvasState?.imageScale}
+                        imageX={design.canvasState?.imageX}
+                        imageY={design.canvasState?.imageY}
+                        imageRotation={design.canvasState?.imageRotation}
+                        textScale={design.canvasState?.textScale}
+                        textX={design.canvasState?.textX}
+                        textY={design.canvasState?.textY}
+                        textRotation={design.canvasState?.textRotation}
+                        additionalTextLayers={design.canvasState?.additionalTextLayers || []}
+                        additionalGraphicLayers={design.canvasState?.additionalGraphicLayers || []}
+                        additionalImageLayers={design.canvasState?.uploadedImages || []}
+                        designOnly
                         size="sm"
-                        showGuides={false}
                       />
 
                       {/* Title & Tags */}

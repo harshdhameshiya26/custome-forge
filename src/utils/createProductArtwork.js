@@ -91,7 +91,7 @@ function drawDefaultGraphic(context, x, y, scale, color, templateName = '') {
       context.arc(pawX, pawY, 10, 0, Math.PI * 2);
       context.fill();
     }
-  } else if (template.includes('minimal') || template.includes('logo')) {
+  } else if (template.includes('minimal') || template.includes('logo') || template.includes('brand')) {
     context.beginPath();
     context.moveTo(0, -48);
     context.lineTo(48, 40);
@@ -260,6 +260,7 @@ export async function createProductArtwork({
   imageRotation,
   additionalTextLayers = [],
   additionalGraphicLayers = [],
+  additionalImageLayers = [],
   productColor,
 }) {
   if (!mockupUrl) throw new Error('The selected product mockup is unavailable.');
@@ -326,34 +327,67 @@ export async function createProductArtwork({
 
   const imageCenterX = zone.left + zone.width / 2 + imageX * zoneRatio;
   const imageCenterY = zone.top + zone.height / 2 + imageY * zoneRatio;
-  context.save();
-  context.translate(imageCenterX, imageCenterY);
-  context.rotate((imageRotation * Math.PI) / 180);
-  if (uploadedImageUrl) {
-    const uploadedImage = await loadImage(uploadedImageUrl);
-    context.filter = darkProductColors[productId]?.includes(productColor)
-      ? 'brightness(1.1)'
-      : 'none';
-    drawContainedImage(
-      context,
-      uploadedImage,
-      0,
-      0,
-      110 * (imageScale / 100) * zoneRatio,
-      130 * (imageScale / 100) * zoneRatio,
-    );
-    context.filter = 'none';
-  } else if (uploadedFileName) {
-    drawDefaultGraphic(
-      context,
-      0,
-      0,
-      2 * imageScale,
-      effectiveTextColor,
-      uploadedFileName,
-    );
+  if (Array.isArray(additionalImageLayers) && additionalImageLayers.length > 0) {
+    for (const layer of additionalImageLayers) {
+      if (layer.visible === false || !layer.url) continue;
+      const lx = Number(layer.x) || 0;
+      const ly = Number(layer.y) || 0;
+      const lScale = Number(layer.scale) || 80;
+      const lRot = Number(layer.rotation) || 0;
+      const imgCenterX = zone.left + zone.width / 2 + lx * zoneRatio;
+      const imgCenterY = zone.top + zone.height / 2 + ly * zoneRatio;
+      context.save();
+      context.translate(imgCenterX, imgCenterY);
+      context.rotate((lRot * Math.PI) / 180);
+      try {
+        const imgObj = await loadImage(layer.url);
+        context.filter = darkProductColors[productId]?.includes(productColor)
+          ? 'brightness(1.1)'
+          : 'none';
+        drawContainedImage(
+          context,
+          imgObj,
+          0,
+          0,
+          110 * (lScale / 100) * zoneRatio,
+          130 * (lScale / 100) * zoneRatio,
+        );
+        context.filter = 'none';
+      } catch (err) {
+        console.warn('Failed to draw additional image layer in artwork:', err);
+      }
+      context.restore();
+    }
+  } else {
+    context.save();
+    context.translate(imageCenterX, imageCenterY);
+    context.rotate((imageRotation * Math.PI) / 180);
+    if (uploadedImageUrl) {
+      const uploadedImage = await loadImage(uploadedImageUrl);
+      context.filter = darkProductColors[productId]?.includes(productColor)
+        ? 'brightness(1.1)'
+        : 'none';
+      drawContainedImage(
+        context,
+        uploadedImage,
+        0,
+        0,
+        110 * (imageScale / 100) * zoneRatio,
+        130 * (imageScale / 100) * zoneRatio,
+      );
+      context.filter = 'none';
+    } else if (uploadedFileName) {
+      drawDefaultGraphic(
+        context,
+        0,
+        0,
+        2 * imageScale,
+        effectiveTextColor,
+        uploadedFileName,
+      );
+    }
+    context.restore();
   }
-  context.restore();
 
   drawText(context, customText, {
     selectedFont,

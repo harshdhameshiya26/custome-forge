@@ -179,7 +179,7 @@ export const getActiveRoutingRules = async (shop = null) => {
       });
       if (rules && rules.length > 0) return rules;
     } catch (err) {
-      logWarn(`⚠️ Prisma getActiveRoutingRules error: ${err.message}. Falling back to Mongoose.`);
+      logWarn(` Prisma getActiveRoutingRules error: ${err.message}. Falling back to Mongoose.`);
     }
   }
 
@@ -229,7 +229,7 @@ export const resolveOrderAttributes = async (orderId, explicitData = {}) => {
         resolved.isApproved = order.status === 'APPROVED' || order.status === 'IN_PRODUCTION';
       }
     } catch (err) {
-      logWarn(`⚠️ Prisma customOrder lookup error: ${err.message}`);
+      logWarn(` Prisma customOrder lookup error: ${err.message}`);
     }
   }
 
@@ -298,7 +298,7 @@ export const resolveOrderAttributes = async (orderId, explicitData = {}) => {
         }
       }
     } catch (err) {
-      logWarn(`⚠️ Mongoose proof lookup error: ${err.message}`);
+      logWarn(` Mongoose proof lookup error: ${err.message}`);
     }
   }
 
@@ -352,7 +352,7 @@ export const persistHandoffAssignment = async ({
         },
       });
     } catch (err) {
-      logWarn(`⚠️ Prisma CustomOrder upsert error: ${err.message}`);
+      logWarn(` Prisma CustomOrder upsert error: ${err.message}`);
     }
   }
 
@@ -373,7 +373,7 @@ export const persistHandoffAssignment = async ({
       { $set: { assignedQueue, supplierId, tags } },
     );
   } catch (err) {
-    logWarn(`⚠️ Timeline queue update error: ${err.message}`);
+    logWarn(` Timeline queue update error: ${err.message}`);
   }
 
   // 3. Mongoose CustomOrder fallback
@@ -398,7 +398,7 @@ export const persistHandoffAssignment = async ({
       { upsert: true, new: true },
     );
   } catch (err) {
-    logWarn(`⚠️ Mongoose CustomOrder upsert error: ${err.message}`);
+    logWarn(` Mongoose CustomOrder upsert error: ${err.message}`);
   }
 };
 
@@ -452,7 +452,7 @@ export const processOrderHandoff = async (orderId, explicitPayload = {}) => {
   });
 
   logSuccess(
-    `🚀 [HandoffService] Order "${orderId}" routed to queue "${evaluationResult.assignedQueue}" (Supplier: ${evaluationResult.supplierId || 'none'}, Tags: [${evaluationResult.tags.join(', ')}])`,
+    ` [HandoffService] Order "${orderId}" routed to queue "${evaluationResult.assignedQueue}" (Supplier: ${evaluationResult.supplierId || 'none'}, Tags: [${evaluationResult.tags.join(', ')}])`,
   );
 
   return {

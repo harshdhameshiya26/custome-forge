@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
+import PropTypes from 'prop-types';
 import {
   Page,
   Layout,
@@ -33,7 +34,7 @@ const TEAMS = [
  * Manages store preferences and production handoff routing rules via /api/rules.
  * Starts with no data (0) until rules are created.
  */
-export default function Settings() {
+export default function Settings({ customOrders = [] }) {
   const navigate = useNavigate();
   const location = useLocation();
   const basePath = location?.pathname?.startsWith('/app') ? '/app' : '';
@@ -83,9 +84,12 @@ export default function Settings() {
     { id: 'general', content: 'General' },
     { id: 'production_rules', content: `Production Rules (${rules.length})` },
     { id: 'email_notifications', content: 'Email Notifications' },
-    { id: 'design_validation', content: 'Design Validation' },
-    { id: 'integrations', content: 'Integrations' },
   ];
+
+  const customizedOrders = useMemo(
+    () => (Array.isArray(customOrders) ? customOrders : []),
+    [customOrders],
+  );
 
   const handleAddRule = useCallback(async () => {
     if (!newProductType.trim()) return;
@@ -324,44 +328,52 @@ export default function Settings() {
             {/* TAB 2: EMAIL NOTIFICATIONS */}
             {activeTab === 2 && (
               <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Notification Templates</Text>
+                <Text variant="headingMd" as="h2">Customized Product Orders</Text>
                 <Text variant="bodySm" tone="subdued" as="p">
-                  Customer email triggers for Proof Ready, Revisions Requested, and Shipped status.
+                  Shopify orders containing products published from CustomForge.
                 </Text>
-                <Banner tone="info" title="Automated Customer Emails Active">
+                <Banner tone="info" title="Shopify customer email access requires approval">
                   <Text as="p" variant="bodyMd">
-                    Emails are delivered using verified Shopify Storefront notifications.
+                    The orders below are available, but Shopify is blocking customer email data because this app has not been approved for protected customer data. Request access in the Shopify Partner Dashboard to show email addresses. Order history may also be limited to the last 60 days.
                   </Text>
                 </Banner>
+                {customizedOrders.length === 0 ? (
+                  <Card background="bg-surface-secondary">
+                    <Box padding="400">
+                      <Text as="p" variant="bodyMd" tone="subdued">
+                        No orders containing CustomForge-published products were found in the available Shopify order history.
+                      </Text>
+                    </Box>
+                  </Card>
+                ) : (
+                  <BlockStack gap="200">
+                    {customizedOrders.map((order) => (
+                      <Card key={order.shopifyOrderId || order.orderNumber} background="bg-surface-secondary">
+                        <BlockStack gap="200">
+                          <InlineStack align="space-between" alignBlock="center" wrap>
+                            <BlockStack gap="100">
+                              <Text variant="bodyMd" fontWeight="bold" as="span">
+                                {order.orderNumber}
+                              </Text>
+                              <Text variant="bodySm" tone="subdued" as="span">
+                                {order.products.join(', ')}
+                              </Text>
+                            </BlockStack>
+                            <Badge tone="info">
+                              {order.customerEmail || 'Email requires approval'}
+                            </Badge>
+                          </InlineStack>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            {new Date(order.createdAt).toLocaleDateString()}
+                          </Text>
+                        </BlockStack>
+                      </Card>
+                    ))}
+                  </BlockStack>
+                )}
               </BlockStack>
             )}
 
-            {/* TAB 3: DESIGN VALIDATION */}
-            {activeTab === 3 && (
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Pre-flight Validation Constraints</Text>
-                <Text variant="bodySm" tone="subdued" as="p">
-                  Strict enforcement for CMYK color profile conversion and transparent background PNG checking.
-                </Text>
-                <Badge tone="success">ArtworkValidator Engine Active</Badge>
-              </BlockStack>
-            )}
-
-            {/* TAB 4: INTEGRATIONS */}
-            {activeTab === 4 && (
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Factory & API Integrations</Text>
-                <Card background="bg-surface-secondary">
-                  <InlineStack align="space-between" alignBlock="center">
-                    <BlockStack gap="100">
-                      <Text variant="bodyMd" fontWeight="bold" as="span">Shopify Admin GraphQL API</Text>
-                      <Text variant="bodySm" tone="subdued" as="span">Connected with App Bridge v3</Text>
-                    </BlockStack>
-                    <Badge tone="success">Operational</Badge>
-                  </InlineStack>
-                </Card>
-              </BlockStack>
-            )}
           </BlockStack>
         </Card>
       </BlockStack>
@@ -404,3 +416,15 @@ export default function Settings() {
     </Page>
   );
 }
+
+Settings.propTypes = {
+  customOrders: PropTypes.arrayOf(
+    PropTypes.shape({
+      customerEmail: PropTypes.string,
+      orderNumber: PropTypes.string.isRequired,
+      shopifyOrderId: PropTypes.string,
+      createdAt: PropTypes.string.isRequired,
+      products: PropTypes.arrayOf(PropTypes.string).isRequired,
+    }),
+  ).isRequired,
+};

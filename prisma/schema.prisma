@@ -145,7 +145,7 @@ model tbl_Design {
 
 // ============================================================
 // 02 · DESIGN REVISION  (Feature 8 — Full version history)
-// ============================================================
+// ====================== ======================================
 
 model tbl_DesignRevision {
   id String @id @default(auto()) @map("_id") @db.ObjectId

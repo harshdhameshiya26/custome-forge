@@ -22,7 +22,6 @@ import VersionComparisonModal from '../components/VersionComparisonModal';
 
 // Services / utilities - untouched
 import api from '../services/api';
-import { removeImageBackground } from '../services/backgroundRemoval';
 import { createProductArtwork } from '../utils/createProductArtwork';
 import { getProductPrintArea } from '../utils/productPrintAreas';
 
@@ -262,6 +261,8 @@ const TEMPLATE_PRESETS = [
   { title: 'Hello 2026', category: 'Seasonal', text: 'HELLO 2026' },
 ];
 
+const isBuiltInTemplate = (name) => Boolean(name && TEMPLATE_PRESETS.some((t) => t.title.toLowerCase() === String(name).toLowerCase()));
+
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
 // 
@@ -410,6 +411,8 @@ function CanvasStage({
   textRotation,
   uploadedImageUrl,
   uploadedFileName,
+  uploadedImages = [],
+  selectedImageId = null,
   additionalTextLayers,
   additionalGraphicLayers,
   // CSS image filter controls
@@ -483,7 +486,7 @@ function CanvasStage({
   const imgFilter = `brightness(${imgBrightness / 100}) contrast(${imgContrast / 100}) saturate(${imgSaturation / 100}) hue-rotate(${imgHueRotate}deg)${shadowPx}`;
 
   const displayText = (customText || '').trim();
-  const hasImage = Boolean(uploadedImageUrl || uploadedFileName);
+  const hasImage = Boolean(uploadedImageUrl || uploadedFileName || (uploadedImages && uploadedImages.length > 0));
 
   return (
     <div
@@ -540,31 +543,88 @@ function CanvasStage({
           position: 'absolute',
         }}
       >
-        {/* Uploaded / background-removed image layer */}
-        {uploadedImageUrl && (
-          <div
-            className="cfs-design-image-wrap"
-            style={{
-              transform: `translate(${imageX}px, ${imageY}px) rotate(${imageRotation}deg) scale(${imageScale / 100})`,
-              mixBlendMode: imgBlendMode,
-              opacity: imgOpacity / 100,
-              filter: imgFilter,
-              position: 'relative',
-              width: '80%',
-              height: '80%',
-            }}
-          >
-            <img
-              src={uploadedImageUrl}
-              alt="Design artwork"
-              className="cfs-design-image"
-              style={{ width: '100%', height: '100%' }}
-            />
-          </div>
+        {/* Uploaded image layers - show ALL uploaded images simultaneously */}
+        {uploadedImages && uploadedImages.length > 0 ? (
+          uploadedImages
+            .filter((img) => img.visible !== false && img.url)
+            .map((img) => {
+              const isSelected = img.id === selectedImageId || (uploadedImages.length === 1 && !selectedImageId);
+              const curX = isSelected ? imageX : (img.x ?? 0);
+              const curY = isSelected ? imageY : (img.y ?? 0);
+              const curScale = isSelected ? imageScale : (img.scale ?? 75);
+              const curRotation = isSelected ? imageRotation : (img.rotation ?? 0);
+              const curBlend = isSelected ? imgBlendMode : (img.blendMode || 'normal');
+              const curOpacity = isSelected ? imgOpacity : (img.opacity ?? 100);
+
+              const b = isSelected ? imgBrightness : (img.brightness ?? 100);
+              const c = isSelected ? imgContrast : (img.contrast ?? 100);
+              const s = isSelected ? imgSaturation : (img.saturation ?? 100);
+              const h = isSelected ? imgHueRotate : (img.hueRotate ?? 0);
+              const ds = isSelected ? imgDropShadow : (img.dropShadow ?? 0);
+              const shadowStr = ds > 0 ? ` drop-shadow(0 ${ds}px ${ds * 2}px rgba(0,0,0,0.5))` : '';
+              const thisFilter = `brightness(${b / 100}) contrast(${c / 100}) saturate(${s / 100}) hue-rotate(${h}deg)${shadowStr}`;
+
+              return (
+                <div
+                  key={img.id}
+                  style={{
+                    position: 'absolute',
+                    /* Center anchor: images are positioned from the middle of the print zone */
+                    left: '50%',
+                    top: '50%',
+                    /* Transform anchored at center so translate(x,y) moves from center outward */
+                    transform: `translate(calc(-50% + ${curX}px), calc(-50% + ${curY}px)) rotate(${curRotation}deg) scale(${curScale / 100})`,
+                    transformOrigin: 'center center',
+                    mixBlendMode: curBlend,
+                    opacity: curOpacity / 100,
+                    filter: thisFilter,
+                    pointerEvents: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    /* Size is relative to the print zone so images are naturally sized */
+                    maxWidth: '80%',
+                    maxHeight: '80%',
+                  }}
+                >
+                  <img
+                    src={img.url}
+                    alt={img.name || 'Design artwork'}
+                    className="cfs-design-image"
+                    style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
+                </div>
+              );
+            })
+        ) : (
+          uploadedImageUrl && (
+            <div
+              className="cfs-design-image-wrap"
+              style={{
+                transform: `translate(${imageX}px, ${imageY}px) rotate(${imageRotation}deg) scale(${imageScale / 100})`,
+                mixBlendMode: imgBlendMode,
+                opacity: imgOpacity / 100,
+                filter: imgFilter,
+                position: 'relative',
+                width: '80%',
+                height: '80%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <img
+                src={uploadedImageUrl}
+                alt="Design artwork"
+                className="cfs-design-image"
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              />
+            </div>
+          )
         )}
 
         {/* Graphic placeholder (template) */}
-        {!uploadedImageUrl && uploadedFileName && uploadedFileName !== 'good_vibes_sun.svg' && (
+        {!uploadedImageUrl && (!uploadedImages || uploadedImages.length === 0) && uploadedFileName && uploadedFileName !== 'good_vibes_sun.svg' && (
           <div
             style={{
               transform: `translate(${imageX}px, ${imageY}px) rotate(${imageRotation}deg) scale(${imageScale / 100})`,
@@ -616,7 +676,11 @@ function CanvasStage({
                 transform: `translate(${layer.x}px, ${layer.y}px) rotate(${layer.rotation}deg) scale(${layer.scale / 100})`,
               }}
             >
-              <DefaultSvgGraphic name={layer.name} color={layer.color} size={70} />
+              <DefaultSvgGraphic
+                name={layer.name}
+                color={(isDark || isNavy || isCrimson || isForestGreen) && (layer.color === '#111827' || !layer.color) ? '#ffffff' : (layer.color || effTextColor)}
+                size={Math.round(75 * ((layer.scale || 60) / 60))}
+              />
             </div>
           ))}
 
@@ -666,6 +730,8 @@ CanvasStage.propTypes = {
   textRotation: PropTypes.number,
   uploadedImageUrl: PropTypes.string,
   uploadedFileName: PropTypes.string,
+  uploadedImages: PropTypes.array,
+  selectedImageId: PropTypes.string,
   additionalTextLayers: PropTypes.array,
   additionalGraphicLayers: PropTypes.array,
   imgBrightness: PropTypes.number,
@@ -736,6 +802,35 @@ function DefaultSvgGraphic({ name, color = '#111827', size = 90 }) {
       <svg width={s} height={s} viewBox="0 0 120 110" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="m60 8-30 38h17L22 72h76L73 46h17L60 8Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
         <path d="M53 72h14v24H53z" fill={color} />
+      </svg>
+    );
+  }
+  if (norm.includes('logo') || norm.includes('brand') || norm.includes('minimal')) {
+    return (
+      <svg width={s} height={s * 0.8} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="60,18 95,78 25,78" stroke={color} strokeWidth="5" strokeLinejoin="round" fill="none" />
+        <polygon points="60,38 78,70 42,70" fill={color} opacity="0.6" />
+        <circle cx="60" cy="18" r="5" fill={color} />
+      </svg>
+    );
+  }
+  if (norm.includes('birthday') || norm.includes('celebration')) {
+    return (
+      <svg width={s} height={s * 0.8} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="25" y="45" width="70" height="42" rx="4" stroke={color} strokeWidth="4" />
+        <line x1="25" y1="65" x2="95" y2="65" stroke={color} strokeWidth="3" />
+        <line x1="60" y1="45" x2="60" y2="87" stroke={color} strokeWidth="4" />
+        <path d="M48 35C40 25 60 20 60 35C60 20 80 25 72 35" stroke={color} strokeWidth="4" strokeLinecap="round" />
+        <circle cx="35" cy="20" r="3" fill={color} />
+        <circle cx="85" cy="20" r="3" fill={color} />
+      </svg>
+    );
+  }
+  if (norm.includes('2026') || norm.includes('year')) {
+    return (
+      <svg width={s} height={s * 0.8} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="60,10 72,38 102,40 78,60 86,90 60,72 34,90 42,60 18,40 48,38" stroke={color} strokeWidth="4" fill="none" strokeLinejoin="round" />
+        <circle cx="60" cy="50" r="10" fill={color} opacity="0.75" />
       </svg>
     );
   }
@@ -924,6 +1019,26 @@ function IconCenterTarget({ size = 12 }) {
   );
 }
 
+function IconTrash({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
+function IconPlus({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
 // -----------------------------------------------------------------------------
 // TOOL IDs
 // -----------------------------------------------------------------------------
@@ -1076,9 +1191,9 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
   const [uploadedFileSize, setUploadedFileSize] = useState('1.8 MB');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
-  const [backgroundRemovalResult, setBackgroundRemovalResult] = useState(null);
-  const [backgroundRemovalLoading, setBackgroundRemovalLoading] = useState(false);
-  const [backgroundRemovalError, setBackgroundRemovalError] = useState('');
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const [selectedImageId, setSelectedImageId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [imageScale, setImageScale] = useState(90);
   const [imageX, setImageX] = useState(0);
   const [imageY, setImageY] = useState(-24);
@@ -1191,89 +1306,393 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
   }, []);
 
   // 
-  // Image drop handler
+  // Image drop & upload handlers (Multiple images support)
   // 
   const dropzoneRef = useRef(null);
   const fileInputRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
 
-  const processFile = useCallback((file) => {
-    if (!file) return;
-    setBackgroundRemovalError('');
-    setBackgroundRemovalResult((cur) => {
-      if (cur?.url) URL.revokeObjectURL(cur.url);
-      return null;
-    });
-    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-    setUploadedFileName(file.name);
-    setUploadedFileSize(`${sizeMB} MB`);
-    setUploadedFile(file);
-    if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setUploadedImageUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
-      setImageY(-20); setImageScale(90); setImageX(0); setImageRotation(0);
-      // Reset filters on new upload
-      setImgBrightness(100); setImgContrast(100); setImgSaturation(100);
-      setImgHueRotate(0); setImgOpacity(100); setImgBlendMode('normal'); setImgDropShadow(0);
-    } else {
-      setUploadedImageUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+  // Returns uploadedImages with active image's live slider transforms merged in
+  const getSyncedUploadedImages = useCallback(() => {
+    if (!selectedImageId || uploadedImages.length === 0) return uploadedImages;
+    return uploadedImages.map((img) =>
+      img.id === selectedImageId
+        ? {
+            ...img,
+            x: imageX,
+            y: imageY,
+            scale: imageScale,
+            rotation: imageRotation,
+            brightness: imgBrightness,
+            contrast: imgContrast,
+            saturation: imgSaturation,
+            hueRotate: imgHueRotate,
+            opacity: imgOpacity,
+            blendMode: imgBlendMode,
+            dropShadow: imgDropShadow,
+          }
+        : img
+    );
+  }, [selectedImageId, uploadedImages, imageX, imageY, imageScale, imageRotation, imgBrightness, imgContrast, imgSaturation, imgHueRotate, imgOpacity, imgBlendMode, imgDropShadow]);
+
+  const addImageFile = useCallback((file) => {
+    if (!file || !file.type?.startsWith('image/')) {
+      addToast('error', 'Invalid File', 'Please upload an image file (PNG, JPG, SVG, WebP, etc.).');
+      return;
     }
-  }, []);
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    const sizeStr = `${sizeMB} MB`;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      const newId = `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+      setUploadedImages((prev) => {
+        const count = prev.length;
+        const xOffsets = [0, 60, -60, 0, 70, -70];
+        const yOffsets = [0, 0, 0, 60, -60, 60];
+        const initX = xOffsets[count % xOffsets.length];
+        const initY = yOffsets[count % yOffsets.length];
+
+        const newImgItem = {
+          id: newId,
+          name: file.name,
+          size: sizeStr,
+          url: dataUrl,
+          file,
+          x: initX,
+          y: initY,
+          scale: 75,
+          rotation: 0,
+          visible: true,
+          brightness: 100,
+          contrast: 100,
+          saturation: 100,
+          hueRotate: 0,
+          opacity: 100,
+          blendMode: 'normal',
+          dropShadow: 0,
+        };
+
+        // If an image was previously selected, save its live values
+        const updated = prev.map((img) =>
+          img.id === selectedImageId
+            ? {
+                ...img,
+                x: imageX,
+                y: imageY,
+                scale: imageScale,
+                rotation: imageRotation,
+                brightness: imgBrightness,
+                contrast: imgContrast,
+                saturation: imgSaturation,
+                hueRotate: imgHueRotate,
+                opacity: imgOpacity,
+                blendMode: imgBlendMode,
+                dropShadow: imgDropShadow,
+              }
+            : img
+        );
+
+        return [...updated, newImgItem];
+      });
+
+      setSelectedImageId(newId);
+      setUploadedImageUrl(dataUrl);
+      setUploadedFileName(file.name);
+      setUploadedFileSize(sizeStr);
+      setUploadedFile(file);
+
+      const count = uploadedImages.length;
+      const xOffsets = [0, 60, -60, 0, 70, -70];
+      const yOffsets = [0, 0, 0, 60, -60, 60];
+      setImageX(xOffsets[count % xOffsets.length]);
+      setImageY(yOffsets[count % yOffsets.length]);
+      setImageScale(75);
+      setImageRotation(0);
+      setImgBrightness(100);
+      setImgContrast(100);
+      setImgSaturation(100);
+      setImgHueRotate(0);
+      setImgOpacity(100);
+      setImgBlendMode('normal');
+      setImgDropShadow(0);
+
+      addToast('success', 'Artwork Added', `"${file.name}" added to product. All images are displayed!`);
+    };
+    reader.readAsDataURL(file);
+  }, [selectedImageId, imageX, imageY, imageScale, imageRotation, imgBrightness, imgContrast, imgSaturation, imgHueRotate, imgOpacity, imgBlendMode, imgDropShadow, uploadedImages.length, addToast]);
 
   const handleDragOver = useCallback((e) => { e.preventDefault(); setIsDragActive(true); }, []);
   const handleDragLeave = useCallback(() => setIsDragActive(false), []);
   const handleDrop = useCallback((e) => {
     e.preventDefault();
     setIsDragActive(false);
-    processFile(e.dataTransfer.files[0]);
-  }, [processFile]);
-  const handleFileInput = useCallback((e) => processFile(e.target.files[0]), [processFile]);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length === 0) return;
+    files.forEach((f) => addImageFile(f));
+  }, [addImageFile]);
 
-  const handleBackgroundRemoval = useCallback(async () => {
-    if (!uploadedFile || !uploadedImageUrl) {
-      setBackgroundRemovalError('Upload a PNG, JPEG, or WebP image first.');
-      return;
+  const handleFileInput = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    files.forEach((f) => addImageFile(f));
+    e.target.value = '';
+  }, [addImageFile]);
+
+  const handleSelectUploadedImage = useCallback((item) => {
+    if (!item) return;
+    // Save current active transforms to previous selected image
+    if (selectedImageId && selectedImageId !== item.id) {
+      setUploadedImages((prev) =>
+        prev.map((img) =>
+          img.id === selectedImageId
+            ? {
+                ...img,
+                x: imageX,
+                y: imageY,
+                scale: imageScale,
+                rotation: imageRotation,
+                brightness: imgBrightness,
+                contrast: imgContrast,
+                saturation: imgSaturation,
+                hueRotate: imgHueRotate,
+                opacity: imgOpacity,
+                blendMode: imgBlendMode,
+                dropShadow: imgDropShadow,
+              }
+            : img
+        )
+      );
     }
-    setBackgroundRemovalLoading(true);
-    setBackgroundRemovalError('');
-    try {
-      const outFile = await removeImageBackground(uploadedFile);
-      const previewUrl = URL.createObjectURL(outFile);
-      setBackgroundRemovalResult((prev) => {
-        if (prev?.url) URL.revokeObjectURL(prev.url);
-        return { file: outFile, url: previewUrl };
-      });
-    } catch (err) {
-      setBackgroundRemovalError(err?.message || 'Background removal failed.');
-    } finally {
-      setBackgroundRemovalLoading(false);
-    }
-  }, [uploadedFile, uploadedImageUrl]);
 
-  const handleAcceptBgRemoval = useCallback(() => {
-    if (!backgroundRemovalResult) return;
-    if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
-    setUploadedImageUrl(backgroundRemovalResult.url);
-    setUploadedFile(backgroundRemovalResult.file);
-    setUploadedFileName(backgroundRemovalResult.file.name);
-    setUploadedFileSize(`${(backgroundRemovalResult.file.size / (1024 * 1024)).toFixed(1)} MB`);
-    setBackgroundRemovalResult(null);
-    addToast('success', 'Background Removed', 'Transparent artwork applied to canvas.');
-  }, [backgroundRemovalResult, uploadedImageUrl, addToast]);
+    setSelectedImageId(item.id);
+    setUploadedImageUrl(item.url);
+    setUploadedFileName(item.name);
+    setUploadedFileSize(item.size);
+    setUploadedFile(item.file);
 
-  const handleDiscardBgRemoval = useCallback(() => {
-    if (backgroundRemovalResult?.url) URL.revokeObjectURL(backgroundRemovalResult.url);
-    setBackgroundRemovalResult(null);
-  }, [backgroundRemovalResult]);
+    setImageX(item.x ?? 0);
+    setImageY(item.y ?? 0);
+    setImageScale(item.scale ?? 75);
+    setImageRotation(item.rotation ?? 0);
+    setImgBrightness(item.brightness ?? 100);
+    setImgContrast(item.contrast ?? 100);
+    setImgSaturation(item.saturation ?? 100);
+    setImgHueRotate(item.hueRotate ?? 0);
+    setImgOpacity(item.opacity ?? 100);
+    setImgBlendMode(item.blendMode || 'normal');
+    setImgDropShadow(item.dropShadow ?? 0);
+
+    addToast('info', 'Image Selected', `"${item.name}" is now active for editing.`);
+  }, [selectedImageId, imageX, imageY, imageScale, imageRotation, imgBrightness, imgContrast, imgSaturation, imgHueRotate, imgOpacity, imgBlendMode, imgDropShadow, addToast]);
 
   const handleRemoveImage = useCallback(() => {
-    if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
+    if (uploadedImages.length === 0 && !uploadedImageUrl) {
+      addToast('warning', 'No Image Selected', 'No image is currently on the product to remove.');
+      return;
+    }
+
+    const targetId = selectedImageId || (uploadedImages.length > 0 ? uploadedImages[uploadedImages.length - 1].id : null);
+    const targetItem = uploadedImages.find((img) => img.id === targetId);
+    const removedName = targetItem?.name || uploadedFileName || 'Image';
+
+    setUploadedImages((prev) => {
+      const remaining = prev.filter((img) => img.id !== targetId);
+      if (remaining.length > 0) {
+        const nextActive = remaining[remaining.length - 1];
+        setSelectedImageId(nextActive.id);
+        setUploadedImageUrl(nextActive.url);
+        setUploadedFileName(nextActive.name);
+        setUploadedFileSize(nextActive.size);
+        setUploadedFile(nextActive.file);
+        setImageX(nextActive.x ?? 0);
+        setImageY(nextActive.y ?? -20);
+        setImageScale(nextActive.scale ?? 75);
+        setImageRotation(nextActive.rotation ?? 0);
+        setImgBrightness(nextActive.brightness ?? 100);
+        setImgContrast(nextActive.contrast ?? 100);
+        setImgSaturation(nextActive.saturation ?? 100);
+        setImgHueRotate(nextActive.hueRotate ?? 0);
+        setImgOpacity(nextActive.opacity ?? 100);
+        setImgBlendMode(nextActive.blendMode || 'normal');
+        setImgDropShadow(nextActive.dropShadow ?? 0);
+      } else {
+        setSelectedImageId(null);
+        setUploadedImageUrl(null);
+        setUploadedFile(null);
+        if (!isBuiltInTemplate(uploadedFileName)) {
+          setUploadedFileName(null);
+          setUploadedFileSize(null);
+        }
+        setTextY(0);
+      }
+      return remaining;
+    });
+
+    addToast('info', 'Image Removed', `"${removedName}" removed from product.`);
+  }, [selectedImageId, uploadedImages, uploadedImageUrl, uploadedFileName, addToast]);
+
+  const handleDeleteUploadedImage = useCallback((imageId) => {
+    const target = uploadedImages.find((img) => img.id === imageId);
+    const removedName = target?.name || 'Image';
+    setUploadedImages((prev) => {
+      const remaining = prev.filter((img) => img.id !== imageId);
+      if (selectedImageId === imageId) {
+        if (remaining.length > 0) {
+          const nextActive = remaining[remaining.length - 1];
+          setSelectedImageId(nextActive.id);
+          setUploadedImageUrl(nextActive.url);
+          setUploadedFileName(nextActive.name);
+          setUploadedFileSize(nextActive.size);
+          setUploadedFile(nextActive.file);
+          setImageX(nextActive.x ?? 0);
+          setImageY(nextActive.y ?? -20);
+          setImageScale(nextActive.scale ?? 75);
+          setImageRotation(nextActive.rotation ?? 0);
+          setImgBrightness(nextActive.brightness ?? 100);
+          setImgContrast(nextActive.contrast ?? 100);
+          setImgSaturation(nextActive.saturation ?? 100);
+          setImgHueRotate(nextActive.hueRotate ?? 0);
+          setImgOpacity(nextActive.opacity ?? 100);
+          setImgBlendMode(nextActive.blendMode || 'normal');
+          setImgDropShadow(nextActive.dropShadow ?? 0);
+        } else {
+          setSelectedImageId(null);
+          setUploadedImageUrl(null);
+          setUploadedFile(null);
+          if (!isBuiltInTemplate(uploadedFileName)) {
+            setUploadedFileName(null);
+            setUploadedFileSize(null);
+          }
+          setTextY(0);
+        }
+      }
+      return remaining;
+    });
+    addToast('info', 'Image Removed', `"${removedName}" removed.`);
+  }, [uploadedImages, selectedImageId, uploadedFileName, addToast]);
+
+  const handleClearAllImages = useCallback(() => {
+    setUploadedImages([]);
+    setSelectedImageId(null);
     setUploadedImageUrl(null);
-    setUploadedFileName(null);
     setUploadedFile(null);
-    handleDiscardBgRemoval();
+    if (!isBuiltInTemplate(uploadedFileName)) {
+      setUploadedFileName(null);
+      setUploadedFileSize(null);
+    }
     setTextY(0);
-  }, [uploadedImageUrl, handleDiscardBgRemoval]);
+    addToast('info', 'All Images Removed', 'All uploaded images removed from product.');
+  }, [uploadedFileName, addToast]);
+
+  // 
+  // Template Management (Multiple templates support)
+  // 
+  const appliedTemplates = useMemo(() => {
+    const list = [];
+    if (!uploadedImageUrl && uploadedFileName && isBuiltInTemplate(uploadedFileName)) {
+      list.push({ id: 'primary-template', name: uploadedFileName, isPrimary: true });
+    }
+    additionalGraphicLayers.forEach((layer) => {
+      if (layer.isTemplate || isBuiltInTemplate(layer.name)) {
+        list.push({ id: layer.id, name: layer.name, layer });
+      }
+    });
+    return list;
+  }, [uploadedImageUrl, uploadedFileName, additionalGraphicLayers]);
+
+  const handleAddTemplate = useCallback((tpl) => {
+    if (additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT) {
+      addToast('error', 'Layer limit reached', 'Max 12 layers per design. Remove a layer to add more.');
+      return;
+    }
+    const count = additionalGraphicLayers.length;
+    const xOffsets = [0, -25, 25, 0, -30, 30, -15, 15];
+    const yOffsets = [0, -15, -15, 28, 28, 28, -32, -32];
+    const x = xOffsets[count % xOffsets.length];
+    const y = yOffsets[count % yOffsets.length];
+    const id = `tpl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    setAdditionalGraphicLayers((ls) => [
+      ...ls,
+      {
+        id,
+        name: tpl.title,
+        color: textColor,
+        scale: 60,
+        x,
+        y,
+        rotation: 0,
+        visible: true,
+        isTemplate: true,
+      },
+    ]);
+    setSelectedTemplateId(id);
+
+    // If text is empty or default, set to template text
+    if (!customText || customText.trim() === '' || customText === 'YOUR TEXT HERE' || customText === 'GOOD VIBES') {
+      setCustomText(tpl.text);
+    }
+
+    addToast('success', 'Template Added', `"${tpl.title}" added to product. You can add multiple templates!`);
+  }, [additionalTextLayers.length, additionalGraphicLayers.length, textColor, customText, addToast]);
+
+  const handleRemoveSelectedTemplate = useCallback(() => {
+    const targetId = selectedTemplateId || (appliedTemplates.length > 0 ? appliedTemplates[appliedTemplates.length - 1].id : null);
+    if (!targetId) {
+      addToast('warning', 'No Template Selected', 'Select an applied template to remove.');
+      return;
+    }
+    if (targetId === 'primary-template') {
+      const removedName = uploadedFileName;
+      setUploadedFileName(null);
+      setUploadedFileSize(null);
+      const remaining = appliedTemplates.filter((t) => t.id !== 'primary-template');
+      setSelectedTemplateId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+      addToast('info', 'Template Removed', `"${removedName}" removed from product.`);
+      return;
+    }
+    const target = additionalGraphicLayers.find((l) => l.id === targetId);
+    setAdditionalGraphicLayers((ls) => {
+      const remaining = ls.filter((l) => l.id !== targetId);
+      const remainingTemplates = remaining.filter((l) => l.isTemplate || isBuiltInTemplate(l.name));
+      setSelectedTemplateId(remainingTemplates.length > 0 ? remainingTemplates[remainingTemplates.length - 1].id : null);
+      return remaining;
+    });
+    addToast('info', 'Template Removed', `"${target?.name || 'Template'}" removed from product.`);
+  }, [selectedTemplateId, appliedTemplates, uploadedFileName, additionalGraphicLayers, addToast]);
+
+  const handleRemoveTemplateById = useCallback((id) => {
+    if (id === 'primary-template') {
+      const removedName = uploadedFileName;
+      setUploadedFileName(null);
+      setUploadedFileSize(null);
+      setSelectedTemplateId((cur) => cur === 'primary-template' ? null : cur);
+      addToast('info', 'Template Removed', `"${removedName}" removed from product.`);
+      return;
+    }
+    const target = additionalGraphicLayers.find((l) => l.id === id);
+    setAdditionalGraphicLayers((ls) => ls.filter((l) => l.id !== id));
+    setSelectedTemplateId((cur) => {
+      if (cur === id) {
+        const remaining = appliedTemplates.filter((t) => t.id !== id);
+        return remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+      }
+      return cur;
+    });
+    addToast('info', 'Template Removed', `"${target?.name || 'Template'}" removed from product.`);
+  }, [uploadedFileName, appliedTemplates, additionalGraphicLayers, addToast]);
+
+  const handleClearAllTemplates = useCallback(() => {
+    if (uploadedFileName && isBuiltInTemplate(uploadedFileName)) {
+      setUploadedFileName(null);
+      setUploadedFileSize(null);
+    }
+    setAdditionalGraphicLayers((ls) => ls.filter((l) => !l.isTemplate && !isBuiltInTemplate(l.name)));
+    setSelectedTemplateId(null);
+    addToast('info', 'Templates Cleared', 'All templates removed from product.');
+  }, [uploadedFileName, addToast]);
 
   // 
   // Layer management
@@ -1439,6 +1858,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         alignment, selectedEffect, textScale, textX, textY, textRotation,
         imageScale, imageX, imageY, imageRotation,
         additionalTextLayers, additionalGraphicLayers,
+        additionalImageLayers: getSyncedUploadedImages(),
       });
       const result = await fn({
         title,
@@ -1641,10 +2061,13 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         text: customText, customText, font: selectedFont, color: textColor, effect: selectedEffect,
         textScale, textX, textY, textRotation, additionalTextLayers, additionalGraphicLayers,
         imageScale, imageX, imageY, imageRotation, uploadedFileName, uploadedImageUrl,
+        uploadedImages: getSyncedUploadedImages(), selectedImageId,
         size: selectedSize, selectedOptions: selectedOptionValues,
         productType: activeProduct.name, productColor: activeProduct.colors[selectedColorIndex],
         productColorName: activeProduct.colorNames[selectedColorIndex],
         productId: activeProduct.id, colorIndex: selectedColorIndex,
+        productImage: activeProduct.image || null,
+        storeProductId: activeProduct.storeProductId || null,
       };
       const designName = (customText || activeProduct.name).trim();
       const localId = 'design_' + Date.now();
@@ -1730,6 +2153,10 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         if (Array.isArray(state.additionalGraphicLayers)) setAdditionalGraphicLayers(state.additionalGraphicLayers);
         if (state.uploadedFileName !== undefined) setUploadedFileName(state.uploadedFileName);
         if (state.uploadedImageUrl) setUploadedImageUrl(state.uploadedImageUrl);
+        if (Array.isArray(state.uploadedImages) && state.uploadedImages.length > 0) {
+          setUploadedImages(state.uploadedImages);
+          setSelectedImageId(state.selectedImageId || state.uploadedImages[0].id);
+        }
         addToast('info', 'Design Loaded', `"${dName || 'Saved Design'}" loaded.`);
       };
       let found = false;
@@ -1847,32 +2274,156 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
 
               {/*  TEMPLATES  */}
               {activeTool === TOOL.TEMPLATES && (
-                <>
-                  <p className="cfs-text-sm">Start with a template, then edit freely:</p>
-                  <div className="cfs-template-grid">
-                    {TEMPLATE_PRESETS.map((tpl) => (
-                      <div
-                        key={tpl.title}
-                        className="cfs-template-card"
-                        onClick={() => {
-                          setCustomText(tpl.text);
-                          if (!uploadedImageUrl) {
-                            setUploadedFileName(tpl.title);
-                            setUploadedFileSize('Built-in');
-                            setUploadedFile(null);
-                          } else {
-                            addGraphicLayer(tpl.title);
-                          }
-                          setActiveTool(TOOL.TEXT);
-                        }}
-                      >
-                        <div className="cfs-template-card-icon"><IconTemplates size={24} /></div>
-                        <div className="cfs-template-card-title">{tpl.title}</div>
-                        <div className="cfs-template-card-sub">{tpl.category}</div>
+                <div className="cfs-section">
+                  <div className="cfs-section-heading">Design Templates</div>
+                  <p className="cfs-text-sm" style={{ marginBottom: 12 }}>
+                    Add multiple templates to your product. You can mix, match, and remove selected templates at any time.
+                  </p>
+
+                  {/* Applied Templates / Remove Selected Template */}
+                  {appliedTemplates.length > 0 && (
+                    <div style={{
+                      background: 'rgba(99, 102, 241, 0.08)',
+                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                      borderRadius: 8,
+                      padding: '10px 12px',
+                      marginBottom: 16
+                    }}>
+                      <div className="cfs-row-between" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                        <span className="cfs-text-sm" style={{ fontWeight: 600, color: 'var(--cfs-text)' }}>
+                          Applied Templates ({appliedTemplates.length})
+                        </span>
+                        <div className="cfs-row" style={{ gap: 4 }}>
+                          <button
+                            type="button"
+                            className="cfs-btn cfs-btn-danger cfs-btn-xs"
+                            onClick={handleRemoveSelectedTemplate}
+                            title="Remove the currently selected template"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <IconTrash size={12} /> Remove Selected Template
+                          </button>
+                          {appliedTemplates.length > 1 && (
+                            <button
+                              type="button"
+                              className="cfs-btn cfs-btn-ghost cfs-btn-xs"
+                              style={{ color: '#ef4444' }}
+                              onClick={handleClearAllTemplates}
+                              title="Remove all templates"
+                            >
+                              Clear All
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    ))}
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {appliedTemplates.map((tpl) => {
+                          const isSelected = selectedTemplateId === tpl.id || (appliedTemplates.length === 1 && !selectedTemplateId);
+                          return (
+                            <div
+                              key={tpl.id}
+                              onClick={() => setSelectedTemplateId(tpl.id)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '6px 10px',
+                                borderRadius: 6,
+                                background: isSelected ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                                border: isSelected ? '1px solid rgba(99, 102, 241, 0.6)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <IconTemplates size={16} />
+                                <span style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: '#fff' }}>
+                                  {tpl.name}
+                                </span>
+                                {isSelected && (
+                                  <span className="cfs-badge cfs-badge-primary" style={{ fontSize: 9, padding: '1px 5px' }}>
+                                    Selected
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                className="cfs-btn-icon cfs-btn-xs"
+                                style={{ color: '#ef4444', width: 22, height: 22 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveTemplateById(tpl.id);
+                                }}
+                                title="Remove template"
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Template Presets Grid */}
+                  <div className="cfs-section-heading" style={{ marginTop: 4, marginBottom: 8 }}>
+                    Add Templates (Multiple Allowed)
                   </div>
-                </>
+                  <div className="cfs-template-grid">
+                    {TEMPLATE_PRESETS.map((tpl) => {
+                      const countApplied = appliedTemplates.filter((a) => a.name.toLowerCase() === tpl.title.toLowerCase()).length;
+                      return (
+                        <div
+                          key={tpl.title}
+                          className={`cfs-template-card ${countApplied > 0 ? 'active' : ''}`}
+                          onClick={() => handleAddTemplate(tpl)}
+                          title={`Click to add "${tpl.title}" template to product`}
+                          style={{
+                            position: 'relative',
+                            borderColor: countApplied > 0 ? 'rgba(99, 102, 241, 0.5)' : undefined
+                          }}
+                        >
+                          {countApplied > 0 && (
+                            <span
+                              className="cfs-badge cfs-badge-success"
+                              style={{
+                                position: 'absolute',
+                                top: 4,
+                                right: 4,
+                                fontSize: 9,
+                                padding: '1px 4px'
+                              }}
+                            >
+                              {countApplied > 1 ? `Added ×${countApplied}` : 'Added'}
+                            </span>
+                          )}
+                          <div className="cfs-template-card-icon"><IconTemplates size={24} /></div>
+                          <div className="cfs-template-card-title">{tpl.title}</div>
+                          <div className="cfs-template-card-sub">{tpl.category}</div>
+                          <button
+                            type="button"
+                            className="cfs-btn cfs-btn-secondary cfs-btn-xs"
+                            style={{
+                              marginTop: 6,
+                              width: '100%',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 4
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddTemplate(tpl);
+                            }}
+                          >
+                            <IconPlus size={11} /> {countApplied > 0 ? 'Add Another' : 'Add to Product'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
               {/*  TEXT TOOL  */}
@@ -1994,19 +2545,140 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                       ref={fileInputRef}
                       type="file"
                       accept="image/*,application/postscript,application/pdf"
+                      multiple
                       style={{ display: 'none' }}
                       onChange={handleFileInput}
                     />
-                  <div className="cfs-dropzone-icon"><IconUpload size={32} /></div>
+                    <div className="cfs-dropzone-icon"><IconUpload size={32} /></div>
                     <div className="cfs-dropzone-title">
-                      {uploadedImageUrl || uploadedFileName ? 'Replace artwork' : 'Drop artwork here'}
+                      {uploadedImages.length > 0 ? 'Add another image' : 'Drop artwork here'}
                     </div>
                     <div className="cfs-dropzone-sub">SVG, PNG, JPG, AI, EPS, PDF</div>
                   </div>
 
-                  {(uploadedImageUrl || uploadedFileName) && (
+                  {/* Uploaded images on the product */}
+                  {uploadedImages.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="cfs-row-between" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                        <span className="cfs-text-sm" style={{ fontWeight: 600, color: 'var(--cfs-text)' }}>
+                          Images on Product ({uploadedImages.length})
+                        </span>
+                        <div className="cfs-row" style={{ gap: 4 }}>
+                          <button
+                            type="button"
+                            className="cfs-btn cfs-btn-danger cfs-btn-xs"
+                            onClick={handleRemoveImage}
+                            title="Remove the currently selected image"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <IconTrash size={12} /> Remove Selected Image
+                          </button>
+                          {uploadedImages.length > 1 && (
+                            <button
+                              type="button"
+                              className="cfs-btn cfs-btn-ghost cfs-btn-xs"
+                              style={{ color: '#ef4444' }}
+                              onClick={handleClearAllImages}
+                              title="Remove all uploaded images"
+                            >
+                              Clear All
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Thumbnails of all uploaded images */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+                        {uploadedImages.map((img) => {
+                          const isSelected = img.id === selectedImageId || (uploadedImages.length === 1 && !selectedImageId);
+                          return (
+                            <div
+                              key={img.id}
+                              onClick={() => handleSelectUploadedImage(img)}
+                              style={{
+                                border: isSelected ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: 6,
+                                padding: 4,
+                                background: isSelected ? 'rgba(99,102,241,0.2)' : 'rgba(0,0,0,0.25)',
+                                cursor: 'pointer',
+                                position: 'relative'
+                              }}
+                              title={`Click to select "${img.name}" for adjustments`}
+                            >
+                              <div className="cfs-transparency-bg" style={{ height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, overflow: 'hidden' }}>
+                                <img src={img.url} alt={img.name} style={{ maxHeight: 50, maxWidth: '100%', objectFit: 'contain' }} />
+                              </div>
+                              {isSelected && (
+                                <span
+                                  className="cfs-badge cfs-badge-primary"
+                                  style={{
+                                    position: 'absolute',
+                                    bottom: 2,
+                                    left: 2,
+                                    fontSize: 8,
+                                    padding: '0 4px',
+                                    lineHeight: '14px'
+                                  }}
+                                >
+                                  Selected
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="cfs-btn-icon cfs-btn-xs"
+                                style={{
+                                  position: 'absolute',
+                                  top: 2,
+                                  right: 2,
+                                  width: 18,
+                                  height: 18,
+                                  color: '#ef4444',
+                                  background: 'rgba(0,0,0,0.7)',
+                                  borderRadius: 4
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteUploadedImage(img.id);
+                                }}
+                                title="Remove image from product"
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Selected image detail card — derive from selectedImageId in array for accuracy */}
+                      {(() => {
+                        const activeImg = uploadedImages.find((img) => img.id === selectedImageId) || uploadedImages[uploadedImages.length - 1];
+                        if (!activeImg) return null;
+                        return (
+                          <>
+                            <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                              <div className="cfs-row-between">
+                                <span className="cfs-text-md" style={{ fontWeight: 600 }}>
+                                  {activeImg.name || 'Custom Artwork'}
+                                </span>
+                                <span className="cfs-badge cfs-badge-success">Loaded</span>
+                              </div>
+                              <div className="cfs-text-xs" style={{ marginTop: 3 }}>{activeImg.size}</div>
+                            </div>
+
+                            <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginTop: 8 }}>
+                              <div className="cfs-transparency-bg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
+                                <img src={activeImg.url} alt={activeImg.name || 'Preview'} style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {uploadedImages.length === 0 && uploadedImageUrl && (
                     <>
-                      <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 12px', marginTop: 12 }}>
                         <div className="cfs-row-between">
                           <span className="cfs-text-md" style={{ fontWeight: 600 }}>
                             {uploadedFileName || 'Custom Artwork'}
@@ -2016,43 +2688,20 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                         <div className="cfs-text-xs" style={{ marginTop: 3 }}>{uploadedFileSize}</div>
                       </div>
 
-                      {uploadedImageUrl && (
-                        <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <div className="cfs-transparency-bg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
-                            <img src={uploadedImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
-                          </div>
+                      <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginTop: 8 }}>
+                        <div className="cfs-transparency-bg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
+                          <img src={uploadedImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
                         </div>
-                      )}
+                      </div>
 
-                      {backgroundRemovalError && (
-                        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#ef4444' }}>
-                          {backgroundRemovalError}
-                        </div>
-                      )}
-
-                      {backgroundRemovalResult && (
-                        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, padding: '10px 12px' }}>
-                  <div className="cfs-text-sm" style={{ marginBottom: 6, fontWeight: 600 }}>Background Removed Preview</div>
-                          <div className="cfs-transparency-bg" style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, marginBottom: 8 }}>
-                            <img src={backgroundRemovalResult.url} alt="BG removed" style={{ maxHeight: 80, objectFit: 'contain' }} />
-                          </div>
-                          <div className="cfs-row" style={{ gap: 6 }}>
-                    <button className="cfs-btn cfs-btn-primary cfs-btn-sm cfs-flex-1" onClick={handleAcceptBgRemoval}>Apply</button>
-                    <button className="cfs-btn cfs-btn-ghost cfs-btn-sm cfs-flex-1" onClick={handleDiscardBgRemoval}>Discard</button>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="cfs-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                      <div className="cfs-row" style={{ flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                         <button
-                          className="cfs-btn cfs-btn-secondary cfs-btn-sm"
-                          onClick={handleBackgroundRemoval}
-                          disabled={backgroundRemovalLoading || !uploadedFile || !uploadedFile.type?.startsWith('image/') || Boolean(backgroundRemovalResult)}
+                          type="button"
+                          className="cfs-btn cfs-btn-danger cfs-btn-sm"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          onClick={handleRemoveImage}
                         >
-                    {backgroundRemovalLoading ? <><span className="cfs-spinner" /> Removing...</> : "Remove Background"}
-                        </button>
-                        <button className="cfs-btn cfs-btn-ghost cfs-btn-xs" style={{ color: '#ef4444' }} onClick={handleRemoveImage}>
-                          Remove Image
+                          <IconTrash size={14} /> Remove Selected Image
                         </button>
                       </div>
                     </>
@@ -2374,6 +3023,8 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
               textRotation={textRotation}
               uploadedImageUrl={uploadedImageUrl}
               uploadedFileName={uploadedImageUrl ? null : uploadedFileName}
+              uploadedImages={getSyncedUploadedImages()}
+              selectedImageId={selectedImageId}
               additionalTextLayers={additionalTextLayers}
               additionalGraphicLayers={additionalGraphicLayers}
               imgBrightness={imgBrightness}

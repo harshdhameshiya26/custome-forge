@@ -699,10 +699,6 @@ export default function UserPage() {
                             Create an Account
                           </Button>
                         </InlineStack>
-
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          Merchants (14d token) • Suppliers (7d token)
-                        </Text>
                       </InlineStack>
                     </BlockStack>
                   </form>

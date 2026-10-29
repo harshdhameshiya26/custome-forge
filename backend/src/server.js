@@ -113,39 +113,39 @@ const startServer = async () => {
     const server = app.listen(PORT);
 
     server.on('listening', () => {
-      logSuccess(`🌐 Server running on port ${PORT}`);
+      logSuccess(` Server running on port ${PORT}`);
     });
 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        logWarn(`⚠️  Port ${PORT} is in use. Attempting to free it...`);
+        logWarn(`  Port ${PORT} is in use. Attempting to free it...`);
         server.close();
 
         // Kill the blocking process and retry once after a short delay
         freePort(PORT);
 
         setTimeout(() => {
-          logWarn(`🔄 Retrying to listen on port ${PORT}...`);
+          logWarn(` Retrying to listen on port ${PORT}...`);
           server.listen(PORT);
         }, 1000);
       } else {
-        logError(`❌ Server error: ${err.message}`);
+        logError(` Server error: ${err.message}`);
         process.exit(1);
       }
     });
 
     // 4. Graceful shutdown handlers
     const handleShutdown = (signal) => {
-      logWarn(`⚠️  Received ${signal}. Shutting down gracefully...`);
+      logWarn(`  Received ${signal}. Shutting down gracefully...`);
       clearInterval(scheduleEmailTimer);
       server.close(() => {
-        logSuccess('🛑 Server stopped');
+        logSuccess(' Server stopped');
         process.exit(0);
       });
 
       // Force-exit if close takes longer than 10 s
       setTimeout(() => {
-        logError('❌ Forcing shutdown after timeout');
+        logError(' Forcing shutdown after timeout');
         process.exit(1);
       }, 10_000);
     };
@@ -154,19 +154,19 @@ const startServer = async () => {
     process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
     process.on('unhandledRejection', (reason) => {
-      logError(`❌ Unhandled Rejection: ${reason?.stack || reason}`);
+      logError(` Unhandled Rejection: ${reason?.stack || reason}`);
     });
 
     process.on('uncaughtException', (error) => {
       // Ignore EADDRINUSE here — handled by server.on('error') above
       if (error.code !== 'EADDRINUSE') {
-        logError(`❌ Uncaught Exception: ${error.stack || error.message}`);
+        logError(` Uncaught Exception: ${error.stack || error.message}`);
         process.exit(1);
       }
     });
 
   } catch (error) {
-    logError(`❌ Failed to start server: ${error.message}`);
+    logError(` Failed to start server: ${error.message}`);
     process.exit(1);
   }
 };
