@@ -400,7 +400,7 @@ export const action = async ({ request }) => {
       )
     )) ||
     customText.length > 500 ||
-    (!sourceProductId && !/^\d+(?:\.\d{1,2})?$/.test(rawPrice)) ||
+    !/^\d+(?:\.\d{1,2})?$/.test(rawPrice) ||
     (sourceProductId && !/^gid:\/\/shopify\/Product\/\d+$/.test(sourceProductId)) ||
     UNDERGARMENT_PATTERN.test(`${title} ${productType}`) ||
     !['none', 'existing', 'new'].includes(collectionType)
@@ -614,7 +614,7 @@ export const action = async ({ request }) => {
 
       const initialPriceData = await queryShopify(UPDATE_VARIANT_PRICE, {
         productId: createdProduct.id,
-        variants: [{ id: variant.id, price: initialSourceVariant.price }],
+        variants: [{ id: variant.id, price: rawPrice }],
       });
       const initialPriceError = getUserErrorMessage(
         initialPriceData.productVariantsBulkUpdate,
@@ -625,7 +625,7 @@ export const action = async ({ request }) => {
       const remainingVariants = sourceVariants
         .filter((sourceVariant) => sourceVariant.id !== initialSourceVariant.id)
         .map((sourceVariant) => ({
-          price: sourceVariant.price,
+          price: rawPrice,
           optionValues: optionNames.map((name) => {
             const option = sourceVariant.selectedOptions?.find((item) => item.name === name);
             if (!option?.value) {

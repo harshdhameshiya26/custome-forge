@@ -18,6 +18,8 @@ export default function PublishToStorefrontModal({
   size,
   technique,
   customText,
+  customPrice = '',
+  onCustomPriceChange,
   options = [],
   isStoreProduct = false,
   collections,
@@ -50,6 +52,7 @@ export default function PublishToStorefrontModal({
   const selectedCollectionValue = selectedChoice.type === 'existing'
     ? selectedChoice.id
     : selectedChoice.type;
+  const validCustomPrice = /^\d+(?:\.\d{1,2})?$/.test(String(customPrice));
 
   return (
     <Modal
@@ -60,7 +63,7 @@ export default function PublishToStorefrontModal({
         content: 'Publish product',
         onAction: onPublish,
         loading: publishing,
-        disabled: !variantAvailable || collectionsLoading ||
+        disabled: !variantAvailable || !validCustomPrice || collectionsLoading ||
           (Boolean(collectionsError) && selectedChoice.type !== 'none'),
       }}
       secondaryActions={[{ content: 'Cancel', onAction: onClose, disabled: publishing }]}
@@ -94,6 +97,20 @@ export default function PublishToStorefrontModal({
               )}
             </BlockStack>
           </InlineStack>
+
+          <TextField
+            label="Custom product price"
+            type="number"
+            value={String(customPrice)}
+            onChange={onCustomPriceChange}
+            prefix="$"
+            min={0}
+            step="0.01"
+            helpText="This price will be used in Shopify and the storefront."
+            error={!validCustomPrice ? 'Enter a valid price with up to 2 decimal places.' : undefined}
+            disabled={publishing}
+            autoComplete="off"
+          />
 
           {collectionsError && (
             <Banner
@@ -150,6 +167,8 @@ PublishToStorefrontModal.propTypes = {
   size: PropTypes.string,
   technique: PropTypes.string,
   customText: PropTypes.string,
+  customPrice: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  onCustomPriceChange: PropTypes.func,
   options: PropTypes.arrayOf(PropTypes.shape({
     name: PropTypes.string.isRequired,
     value: PropTypes.string.isRequired,

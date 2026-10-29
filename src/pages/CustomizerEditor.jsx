@@ -1163,6 +1163,12 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
     !activeProduct.storeProductId || (variantMatrixLoaded && Boolean(activeVariant));
   const activeProductImage = activeVariant?.image || activeProduct.image;
   const activePrintArea = getProductPrintArea(activeProduct);
+  const defaultProductPrice = String(activeVariant?.price || activeProduct.price || '').replace(/[^0-9.]/g, '');
+
+  const [customProductPrice, setCustomProductPrice] = useState(defaultProductPrice || '0.00');
+  useEffect(() => {
+    setCustomProductPrice(defaultProductPrice || '0.00');
+  }, [activeProduct.id, activeVariant?.id, defaultProductPrice]);
 
   //  Custom product state (for __custom__ entry) 
   const [customProductName, setCustomProductName] = useState('');
@@ -1835,6 +1841,10 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       setCollectionNameError('Select a valid product option combination first.');
       return;
     }
+    if (!/^\d+(?:\.\d{1,2})?$/.test(String(customProductPrice))) {
+      setCollectionNameError('Enter a valid custom price with up to 2 decimal places.');
+      return;
+    }
     if (collectionChoice.type === 'new' && (newCollectionName.trim().length < 2 || newCollectionName.trim().length > 100)) {
       setCollectionNameError('Collection name must be 2-100 characters.');
       return;
@@ -1864,7 +1874,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         title,
         sourceProductId: activeProduct.storeProductId || '',
         productType: activeProduct.productType || activeProduct.category || activeProduct.name,
-        price: activeVariant?.price || activeProduct.price,
+        price: customProductPrice,
         color: selectedColorName,
         size: selectedSize,
         options: activeProductOptions.map((o) => ({
@@ -1893,7 +1903,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       setIsPublishing(false);
     }
   }, [
-    variantSelectionValid, collectionChoice, newCollectionName, activeProduct,
+    variantSelectionValid, collectionChoice, newCollectionName, customProductPrice, activeProduct, 
     activeVariant, activeProductImage, activePrintArea, activeProductOptions,
     alignment, customText, imageRotation, imageScale, imageX, imageY,
     isBold, isItalic, isUnderline, selectedEffect, selectedFont,
@@ -2338,7 +2348,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <IconTemplates size={16} />
-                                <span style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: '#fff' }}>
+                                <span style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: '#14142b' }}>
                                   {tpl.name}
                                 </span>
                                 {isSelected && (
@@ -3071,10 +3081,24 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
               <div className="cfs-product-info-body">
                 <div className="cfs-product-name">{activeProduct.name}</div>
                 <div className="cfs-product-subtitle">{activeProduct.subtitle}</div>
+                <label className="cfs-price-field" htmlFor="custom-product-price">
+                  <span>Custom price</span>
+                  <span className="cfs-price-input-wrap">
+                    <span>$</span>
+                    <input
+                      id="custom-product-price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={customProductPrice}
+                      onChange={(event) => setCustomProductPrice(event.target.value)}
+                    />
+                  </span>
+                </label>
                 <div className="cfs-product-price">
-                  {activeVariant?.price && activeProduct.currencyCode
-                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: activeProduct.currencyCode }).format(Number(activeVariant.price))
-                    : activeProduct.price || '-'}
+                  {Number.isFinite(Number(customProductPrice)) && customProductPrice !== ''
+                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: activeProduct.currencyCode || 'USD' }).format(Number(customProductPrice))
+                    : '-'}
                 </div>
               </div>
             </div>
@@ -3141,17 +3165,6 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
             )}
 
             <div className="cfs-divider" />
-
-            {/* Publish CTA */}
-            <div className="cfs-publish-cta">
-              <div className="cfs-publish-cta-title">Ready to go live?</div>
-              <div className="cfs-publish-cta-sub">
-                Publish this custom design directly to your Shopify storefront.
-              </div>
-              <button className="cfs-btn cfs-btn-primary" style={{ width: '100%' }} onClick={handleOpenPublish}>
-                 Publish to Storefront
-              </button>
-            </div>
 
             <button
               className="cfs-btn cfs-btn-secondary"
@@ -3226,6 +3239,8 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         isStoreProduct={Boolean(activeProduct.storeProductId)}
         technique={activeProduct.compatibleTechniques?.[0] || 'dtg'}
         customText={customText}
+        customPrice={customProductPrice}
+        onCustomPriceChange={setCustomProductPrice}
         collections={collections}
         collectionsLoading={collectionsLoading}
         collectionsError={collectionsError}
