@@ -13,26 +13,26 @@
 /* 1. Root Shell                                                        */
 /* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 .cfs-root {
-  --cfs-bg: #0f1117;
-  --cfs-surface: #1a1d27;
-  --cfs-panel: #141720;
-  --cfs-card: #1e2132;
-  --cfs-border: rgba(255,255,255,0.07);
-  --cfs-border-active: rgba(99,102,241,0.6);
-  --cfs-text: #e8eaf6;
-  --cfs-text-muted: #7b82a0;
-  --cfs-text-dim: #4a5068;
-  --cfs-accent: #6366f1;
-  --cfs-accent-glow: rgba(99,102,241,0.25);
+  --cfs-bg: #f8faff;
+  --cfs-surface: #f1f1f1;
+  --cfs-panel: #ffffff;
+  --cfs-card: #e9eaf0;
+  --cfs-border: rgb(95, 18, 18);
+  --cfs-border-active: rgb(37, 13, 255);
+  --cfs-text: #000107;
+  --cfs-text-muted: #613904;
+  --cfs-text-dim: #00020a;
+  --cfs-accent: #725402;
+  --cfs-accent-glow: rgba(0, 4, 255, 0.144);
   --cfs-accent2: #06b6d4;
   --cfs-success: #10b981;
   --cfs-warn: #f59e0b;
   --cfs-danger: #ef4444;
-  --cfs-canvas-bg: #12151f;
+  --cfs-canvas-bg: #ffffff;
   --cfs-radius: 10px;
   --cfs-radius-lg: 16px;
-  --cfs-shadow: 0 4px 24px rgba(0,0,0,0.4);
-  --cfs-shadow-panel: 0 2px 12px rgba(0,0,0,0.35);
+  --cfs-shadow: 0 4px 24px rgba(255, 0, 0, 0.4);
+  --cfs-shadow-panel: 0 2px 12px rgba(255, 0, 0, 0.35);
 
   font-family: 'Inter', 'Outfit', system-ui, sans-serif;
   background: var(--cfs-bg);
@@ -63,7 +63,7 @@
   gap: 8px;
   font-size: 15px;
   font-weight: 700;
-  color: #fff;
+  color: #8a7744;
   letter-spacing: -0.3px;
   flex-shrink: 0;
   text-decoration: none;
@@ -387,7 +387,7 @@
 }
 
 .cfs-btn-ghost:hover:not(:disabled) {
-  background: rgba(255,255,255,0.05);
+  background: #92a8bd;
   color: var(--cfs-text);
   border-color: rgba(255,255,255,0.15);
 }
@@ -411,7 +411,7 @@
 }
 
 .cfs-btn-secondary:hover:not(:disabled) {
-  background: #272b3f;
+  background: #92a8bd;
   border-color: rgba(255,255,255,0.15);
 }
 
@@ -767,7 +767,7 @@
 
 .cfs-template-card:hover {
   border-color: rgba(255,255,255,0.15);
-  background: #252840;
+  background: #e9d18f;
   transform: translateY(-2px);
 }
 
@@ -1267,7 +1267,7 @@
 .cfs-product-price {
   font-size: 16px;
   font-weight: 800;
-  color: #fff;
+  color: #436b12ec;
   margin-top: 4px;
 }
 
