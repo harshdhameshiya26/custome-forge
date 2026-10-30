@@ -311,13 +311,33 @@ export default function OrderTracking({
                           The combined product preview could not be generated. Refresh the order to try loading it again.
                         </Text>
                       )}
-                      {Object.entries(design.properties || {}).map(([label, value]) => (
-                        value !== '' && value !== null && value !== undefined && (
-                          <Text as="p" variant="bodySm" key={label}>
-                            {label}: {String(value)}
-                          </Text>
-                        )
-                      ))}
+                      {design.productVendor && (
+                        <InlineStack gap="200" blockAlign="center">
+                          <Text as="span" variant="bodySm" fontWeight="semibold">Vendor:</Text>
+                          <Badge tone="info">{design.productVendor}</Badge>
+                        </InlineStack>
+                      )}
+                      {Array.isArray(design.productTags) && design.productTags.length > 0 && (
+                        <InlineStack gap="100" wrap>
+                          <Text as="span" variant="bodySm" fontWeight="semibold">Tags:</Text>
+                          {design.productTags.map((tag) => (
+                            <Badge key={tag} tone="subdued">{tag}</Badge>
+                          ))}
+                        </InlineStack>
+                      )}
+                      {Object.keys(design.properties || {}).length > 0 && (
+                        <BlockStack gap="100">
+                          <Text as="span" variant="bodySm" fontWeight="semibold">Customization Details:</Text>
+                          {Object.entries(design.properties || {}).map(([label, value]) => (
+                            value !== '' && value !== null && value !== undefined && (
+                              <InlineStack key={label} gap="200">
+                                <Text as="span" variant="bodySm" tone="subdued">{label}:</Text>
+                                <Text as="span" variant="bodySm" fontWeight="medium">{String(value)}</Text>
+                              </InlineStack>
+                            )
+                          ))}
+                        </BlockStack>
+                      )}
                     </BlockStack>
                   </Box>
                 </Card>

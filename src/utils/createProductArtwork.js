@@ -35,7 +35,157 @@ function drawDefaultGraphic(context, x, y, scale, color, templateName = '') {
   context.lineCap = 'round';
 
   const template = String(templateName).toLowerCase();
-  if (template.includes('mountain') || template.includes('adventure')) {
+  if (template.includes('diwali') || template.includes('diya')) {
+    // Diya oil lamp
+    context.fillStyle = '#ff6d00';
+    context.strokeStyle = '#e65100';
+    context.beginPath();
+    context.arc(0, 15, 36, 0.1, Math.PI - 0.1, false);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    // Diya flame
+    context.fillStyle = '#ffd600';
+    context.beginPath();
+    context.moveTo(0, -35);
+    context.bezierCurveTo(-14, -15, -14, 0, 0, 5);
+    context.bezierCurveTo(14, 0, 14, -15, 0, -35);
+    context.fill();
+  } else if (template.includes('lunar') || template.includes('lantern') || template.includes('chinese')) {
+    // Lantern
+    context.fillStyle = '#d32f2f';
+    context.strokeStyle = '#ffd700';
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, 0, 32, 40, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = '#ffb300';
+    context.fillRect(-15, -45, 30, 8);
+    context.fillRect(-15, 37, 30, 8);
+  } else if (template.includes('pumpkin') || template.includes('halloween')) {
+    // Pumpkin
+    context.fillStyle = '#ff6d00';
+    context.strokeStyle = '#e65100';
+    context.beginPath();
+    context.ellipse(0, 5, 42, 34, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    // Stem
+    context.fillStyle = '#388e3c';
+    context.fillRect(-6, -38, 12, 14);
+    // Jack-o-lantern face
+    context.fillStyle = '#ffd600';
+    context.fillRect(-18, -4, 10, 10);
+    context.fillRect(8, -4, 10, 10);
+    context.beginPath();
+    context.arc(0, 18, 14, 0, Math.PI);
+    context.fill();
+  } else if (template.includes('clover') || template.includes('patrick') || template.includes('shamrock')) {
+    // Shamrock
+    context.fillStyle = '#00c853';
+    context.beginPath();
+    context.arc(-14, -8, 15, 0, Math.PI * 2);
+    context.arc(14, -8, 15, 0, Math.PI * 2);
+    context.arc(0, -22, 15, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = '#1b5e20';
+    context.lineWidth = 6;
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.quadraticCurveTo(8, 20, 10, 38);
+    context.stroke();
+  } else if (template.includes('sombrero') || template.includes('fiesta')) {
+    // Sombrero
+    context.fillStyle = '#ffa000';
+    context.strokeStyle = '#d50000';
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, 12, 54, 16, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = '#ffb300';
+    context.beginPath();
+    context.arc(0, 10, 24, Math.PI, 0);
+    context.fill();
+  } else if (template.includes('oktoberfest') || template.includes('beer')) {
+    // Beer mug
+    context.fillStyle = '#ffb300';
+    context.fillRect(-22, -10, 44, 48);
+    context.fillStyle = '#ffffff';
+    context.beginPath();
+    context.arc(-14, -14, 12, 0, Math.PI * 2);
+    context.arc(0, -18, 15, 0, Math.PI * 2);
+    context.arc(14, -14, 12, 0, Math.PI * 2);
+    context.fill();
+  } else if (template.includes('ramadan') || template.includes('eid') || template.includes('crescent')) {
+    // Crescent Moon
+    context.fillStyle = '#ffd600';
+    context.beginPath();
+    context.arc(0, 0, 36, 0.4, Math.PI * 1.6);
+    context.arc(12, -4, 30, Math.PI * 1.5, 0.5, true);
+    context.closePath();
+    context.fill();
+  } else if (template.includes('mask') || template.includes('carnival') || template.includes('mardi')) {
+    // Mardi Gras Mask
+    context.fillStyle = '#7b1fa2';
+    context.strokeStyle = '#ffd600';
+    context.lineWidth = 4;
+    context.beginPath();
+    context.ellipse(0, 0, 48, 22, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = '#ffd600';
+    context.fillRect(-24, -4, 14, 8);
+    context.fillRect(10, -4, 14, 8);
+  } else if (template.includes('sakura') || template.includes('blossom')) {
+    // Sakura flower
+    context.fillStyle = '#ff80ab';
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * 2 * Math.PI) / 5;
+      context.beginPath();
+      context.arc(Math.cos(angle) * 20, Math.sin(angle) * 20, 14, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.fillStyle = '#ffd600';
+    context.beginPath();
+    context.arc(0, 0, 8, 0, Math.PI * 2);
+    context.fill();
+  } else if (template.includes('trophy') || template.includes('champion')) {
+    // Trophy
+    context.fillStyle = '#ffd600';
+    context.beginPath();
+    context.moveTo(-25, -25);
+    context.lineTo(25, -25);
+    context.lineTo(18, 10);
+    context.arc(0, 10, 18, 0, Math.PI);
+    context.lineTo(-25, -25);
+    context.fill();
+    context.fillStyle = '#5d4037';
+    context.fillRect(-15, 30, 30, 10);
+  } else if (template.includes('rainbow') || template.includes('pride')) {
+    // Pride Rainbow
+    const colors = ['#ff1744', '#ff9100', '#ffd600', '#00c853', '#2979ff', '#aa00ff'];
+    colors.forEach((col, idx) => {
+      context.strokeStyle = col;
+      context.lineWidth = 5;
+      context.beginPath();
+      context.arc(0, 25, 45 - idx * 6, Math.PI, 0);
+      context.stroke();
+    });
+  } else if (template.includes('flamingo')) {
+    // Flamingo
+    context.fillStyle = '#ff4081';
+    context.beginPath();
+    context.ellipse(5, 5, 20, 14, 0, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = '#ff4081';
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(0, 19);
+    context.lineTo(0, 42);
+    context.stroke();
+  } else if (template.includes('mountain') || template.includes('adventure')) {
     context.beginPath();
     context.moveTo(-70, 40);
     context.lineTo(-20, -40);
@@ -170,16 +320,23 @@ function drawText(context, text, options, zone, ratio) {
       : zone.width / 2;
   const x = zone.left + alignmentOffset + options.textX * ratio;
   const y = zone.top + zone.height / 2 + options.textY * ratio;
-  const size = (14 * (options.textScale / 100) + 2) * ratio;
+  const baseFontSize = options.baseFontSize ?? 28;
+  const size = baseFontSize * (options.textScale / 100) * ratio;
   const weight = options.isBold ? '700' : '500';
   const style = options.isItalic ? 'italic ' : '';
-  const font = `${style}${weight} ${size}px "${options.selectedFont}", sans-serif`;
+  const fontFallback = ['Playfair Display', 'Cinzel', 'Merriweather', 'Cormorant Garamond', 'Abril Fatface', 'DM Serif Display', 'Prata', 'Lora', 'Rye'].includes(options.selectedFont) ? 'serif' :
+    ['Pacifico', 'Dancing Script', 'Great Vibes', 'Satisfy', 'Caveat', 'Sacramento', 'Permanent Marker', 'Yellowtail', 'Courgette', 'Kalam', 'Lobster', 'Special Elite', 'Creepster', 'Monoton', 'Righteous', 'Bangers'].includes(options.selectedFont) ? 'cursive' :
+    options.selectedFont === 'Press Start 2P' ? 'monospace' : 'sans-serif';
+  const font = `${style}${weight} ${size}px "${options.selectedFont}", ${fontFallback}`;
   const maxWidth = zone.width * 0.96;
   const lines = [];
 
   context.save();
   context.translate(x, y);
   context.rotate((options.textRotation * Math.PI) / 180);
+  if (options.selectedEffect === 'curve') {
+    context.transform(1, 0, Math.tan((-4 * Math.PI) / 180), 1, 0, 0);
+  }
   context.font = font;
   context.textBaseline = 'middle';
   context.textAlign = options.selectedEffect === 'curve' ? 'center' : options.alignment;
@@ -190,22 +347,18 @@ function drawText(context, text, options, zone, ratio) {
     context.shadowOffsetY = 3 * ratio;
   }
 
-  if (options.selectedEffect === 'curve') {
-    drawCurvedText(context, text.trim(), maxWidth, size);
-  } else {
-    const words = text.trim().split(/\s+/);
-    let line = '';
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (line && context.measureText(candidate).width > maxWidth) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = candidate;
-      }
+  const words = text.trim().split(/\s+/);
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && context.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
     }
-    if (line) lines.push(line);
   }
+  if (line) lines.push(line);
 
   const lineHeight = size * 1.2;
   const startY = -((lines.length - 1) * lineHeight) / 2;
@@ -238,6 +391,7 @@ function drawText(context, text, options, zone, ratio) {
 
 export async function createProductArtwork({
   mockupUrl,
+  previewCanvasSize = 420,
   productId,
   printArea,
   uploadedImageUrl,
@@ -271,9 +425,15 @@ export async function createProductArtwork({
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Your browser could not prepare the product image.');
 
+  if (selectedFont && document.fonts?.load) {
+    try {
+      await document.fonts.load(`bold 28px "${selectedFont}"`);
+      await document.fonts.load(`normal 28px "${selectedFont}"`);
+    } catch (_) {}
+  }
   if (document.fonts?.ready) await document.fonts.ready;
   const mockup = await loadImage(mockupUrl);
-  context.drawImage(mockup, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  drawContainedImage(context, mockup, CANVAS_SIZE / 2, CANVAS_SIZE / 2, CANVAS_SIZE, CANVAS_SIZE);
 
   const tintColors = {
     tshirt: ['#1e3a8a', '#991b1b'],
@@ -281,7 +441,8 @@ export async function createProductArtwork({
     mug: ['#0284c7'],
     phone_case: ['#d97706'],
   };
-  if (tintColors[productId]?.includes(productColor)) {
+  const isCustomHexColor = /^#[0-9a-f]{6}$/i.test(productColor || '') && productColor.toLowerCase() !== '#ffffff';
+  if (tintColors[productId]?.includes(productColor) || isCustomHexColor) {
     const tint = context.createRadialGradient(
       CANVAS_SIZE / 2,
       CANVAS_SIZE / 2,
@@ -301,10 +462,15 @@ export async function createProductArtwork({
     context.restore();
   }
 
-  const zoneRatio = CANVAS_SIZE / PREVIEW_HEIGHT;
+  const safePreviewCanvasSize = Number.isFinite(Number(previewCanvasSize)) && Number(previewCanvasSize) > 0
+    ? Number(previewCanvasSize)
+    : PREVIEW_HEIGHT;
+  // Editor positions are expressed in CSS pixels on a 420px canvas. Use the
+  // same coordinate system before scaling into the exported 1024px image.
+  const zoneRatio = CANVAS_SIZE / safePreviewCanvasSize;
   const rawZone = printArea?.zone || PRINT_ZONES[productId] || PRINT_ZONES.tshirt;
   const darkProductColors = {
-    tshirt: ['#18181b', '#374151', '#1e3a8a', '#991b1b'],
+    tshirt: ['#18181b', '#18x181b', '#374151', '#1e3a8a', '#991b1b'],
     hoodie: ['#18181b', '#15803d'],
     mug: ['#18181b'],
     phone_case: ['#18181b'],
@@ -349,8 +515,8 @@ export async function createProductArtwork({
           imgObj,
           0,
           0,
-          110 * (lScale / 100) * zoneRatio,
-          130 * (lScale / 100) * zoneRatio,
+          zone.width * 0.8 * (lScale / 80) * 0.8,
+          zone.height * 0.8 * (lScale / 80) * 0.8,
         );
         context.filter = 'none';
       } catch (err) {
@@ -372,8 +538,8 @@ export async function createProductArtwork({
         uploadedImage,
         0,
         0,
-        110 * (imageScale / 100) * zoneRatio,
-        130 * (imageScale / 100) * zoneRatio,
+        zone.width * 0.8 * (imageScale / 100),
+        zone.height * 0.8 * (imageScale / 100),
       );
       context.filter = 'none';
     } else if (uploadedFileName) {
@@ -401,6 +567,7 @@ export async function createProductArtwork({
     textX,
     textY,
     textRotation,
+    baseFontSize: 28,
   }, zone, zoneRatio);
   additionalGraphicLayers
     .filter((layer) => layer.visible !== false)
@@ -410,11 +577,15 @@ export async function createProductArtwork({
       context.save();
       context.translate(x, y);
       context.rotate(((Number(layer.rotation) || 0) * Math.PI) / 180);
+      const graphicScale = Number(layer.scale) || 55;
+      const editorGraphicWidth = 75 * (graphicScale / 60);
+      const editorRenderedWidth = editorGraphicWidth * (graphicScale / 100);
+      const exportGraphicScale = Math.max(20, Math.min(160, (editorRenderedWidth * zoneRatio / 136) * 100));
       drawDefaultGraphic(
         context,
         0,
         0,
-        Math.max(20, Math.min(160, Number(layer.scale) || 55)),
+        exportGraphicScale,
         layer.color || effectiveTextColor,
         layer.name,
       );
@@ -436,6 +607,7 @@ export async function createProductArtwork({
         textX: Math.max(-140, Math.min(140, Number(layer.x) || 0)),
         textY: Math.max(-140, Math.min(140, Number(layer.y) || 0)),
         textRotation: Math.max(-180, Math.min(180, Number(layer.rotation) || 0)),
+        baseFontSize: 18,
       }, zone, zoneRatio);
     });
   context.restore();

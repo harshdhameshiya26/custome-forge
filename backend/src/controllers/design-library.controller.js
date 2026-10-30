@@ -132,6 +132,7 @@ export const saveDesignToLibrary = async (request, response, next) => {
     const {
       designId,
       revisionId,
+      studioKey,
       shopifyProductId,
       canvasState,
       name,
@@ -164,11 +165,15 @@ export const saveDesignToLibrary = async (request, response, next) => {
         : [prodId];
       const thumb = thumbnailUrl || canvasState.uploadedImageUrl || null;
 
-      const libraryItem = await DesignLibraryItem.create({
+      const safeStudioKey = typeof studioKey === 'string' && studioKey.trim()
+        ? studioKey.trim().slice(0, 200)
+        : null;
+      const libraryData = {
         shop,
         shopifyCustomerId: customerId,
         designId: designId && isValidId(designId) ? designId : null,
         revisionId: revisionId && isValidId(revisionId) ? revisionId : null,
+        studioKey: safeStudioKey,
         shopifyProductId: prodId,
         name: displayName,
         thumbnailUrl: thumb,
@@ -179,7 +184,17 @@ export const saveDesignToLibrary = async (request, response, next) => {
         status: 'active',
         canvasState,
         savedBy,
-      });
+      };
+      const existingStudioItem = safeStudioKey
+        ? await DesignLibraryItem.findOne({ shop, shopifyCustomerId: customerId, studioKey: safeStudioKey })
+        : null;
+      const libraryItem = existingStudioItem
+        ? await DesignLibraryItem.findOneAndUpdate(
+            { _id: existingStudioItem._id },
+            { $set: libraryData },
+            { new: true, runValidators: true },
+          )
+        : await DesignLibraryItem.create(libraryData);
 
       return response.status(201).json({
         success: true,

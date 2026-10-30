@@ -2,7 +2,7 @@ import { useLoaderData } from "react-router";
 import OrderTracking from "../../src/pages/OrderTracking";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { isCustomForgePublishedDesignProduct } from "../utils/customforge-published-design";
+import { isCustomForgeLineItem, isCustomForgePublishedDesignProduct } from "../utils/customforge-published-design";
 import { syncCustomOrdersToBackend } from "../utils/sync-custom-orders.server";
 
 export const loader = async ({ request }) => {
@@ -66,7 +66,7 @@ export const loader = async ({ request }) => {
       });
       const customDesigns = lineItems
         .filter((lineItem) =>
-          isCustomForgePublishedDesignProduct(lineItem.variant?.product),
+          isCustomForgeLineItem(lineItem),
         )
         .map((lineItem) => ({
           title: lineItem.title,
@@ -102,6 +102,8 @@ export const loader = async ({ request }) => {
         }),
         product: customDesigns.map((design) => design.title).join(', '),
         customer: 'Shopify customer',
+        customerName: customDesigns[0]?.properties?.['Customer Name'] || 'Shopify customer',
+        customerEmail: customDesigns[0]?.properties?.['Customer Email'] || '',
         financialStatus: order.displayFinancialStatus || 'UNKNOWN',
         customDesigns,
       };

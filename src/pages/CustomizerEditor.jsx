@@ -19,6 +19,7 @@ import PropTypes from 'prop-types';
 // Polaris modals we still need (publish + version history)
 import PublishToStorefrontModal from '../components/PublishToStorefrontModal';
 import VersionComparisonModal from '../components/VersionComparisonModal';
+import DefaultSvgGraphic, { STICKER_CATEGORIES, STICKER_CATALOG } from '../components/DefaultSvgGraphic';
 
 // Services / utilities - untouched
 import api from '../services/api';
@@ -35,6 +36,13 @@ import hoodieImg from '../assets/mockups/hoodie.jpg';
 import mugImg from '../assets/mockups/mug.jpg';
 import phoneCaseImg from '../assets/mockups/phone_case.jpg';
 
+const MOCKUP_ASSET_MAP = {
+  tshirt: whiteTshirtImg,
+  hoodie: hoodieImg,
+  mug: mugImg,
+  phone_case: phoneCaseImg,
+};
+
 // 
 // Static Data
 // 
@@ -49,7 +57,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Classic Tee',
     subtitle: 'Unisex 100% Cotton',
     price: '$24.99',
-    colors: ['#ffffff', '#18x181b', '#1e3a8a', '#991b1b', '#374151'],
+    colors: ['#ffffff', '#18181b', '#1e3a8a', '#991b1b', '#374151'],
     colorNames: ['White', 'Black', 'Navy', 'Crimson', 'Charcoal'],
     image: whiteTshirtImg,
     darkImage: blackTshirtImg,
@@ -61,7 +69,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Premium Hoodie',
     subtitle: 'Unisex French Terry',
     price: '$48.00',
-    colors: ['#ffffff', '#18x181b', '#475569', '#15803d'],
+    colors: ['#ffffff', '#18181b', '#475569', '#15803d'],
     colorNames: ['White', 'Black', 'Heather Grey', 'Forest Green'],
     image: hoodieImg,
     compatibleTechniques: ['embroidery', 'dtg'],
@@ -72,7 +80,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Crop Tee',
     subtitle: "Women's Fitted Crop",
     price: '$22.99',
-    colors: ['#ffffff', '#fce7f3', '#18x181b', '#7c3aed'],
+    colors: ['#ffffff', '#fce7f3', '#18181b', '#7c3aed'],
     colorNames: ['White', 'Pink Blush', 'Black', 'Violet'],
     image: whiteTshirtImg,
     darkImage: blackTshirtImg,
@@ -84,7 +92,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Long-Sleeve Tee',
     subtitle: 'Unisex Thermal Knit',
     price: '$32.00',
-    colors: ['#ffffff', '#18x181b', '#1e3a8a'],
+    colors: ['#ffffff', '#18181b', '#1e3a8a'],
     colorNames: ['White', 'Black', 'Navy'],
     image: whiteTshirtImg,
     darkImage: blackTshirtImg,
@@ -97,7 +105,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Ceramic Mug',
     subtitle: '15oz Matte Stoneware',
     price: '$18.50',
-    colors: ['#ffffff', '#18x181b', '#0284c7'],
+    colors: ['#ffffff', '#18181b', '#0284c7'],
     colorNames: ['White', 'Matte Black', 'Cobalt Blue'],
     image: mugImg,
     compatibleTechniques: ['laser', 'uv_print'],
@@ -108,7 +116,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Travel Mug',
     subtitle: '20oz Stainless Steel',
     price: '$28.00',
-    colors: ['#d1d5db', '#18x181b', '#7c3aed'],
+    colors: ['#d1d5db', '#18181b', '#7c3aed'],
     colorNames: ['Silver', 'Matte Black', 'Royal Purple'],
     image: mugImg,
     compatibleTechniques: ['laser', 'uv_print'],
@@ -119,7 +127,7 @@ const BUILT_IN_PRODUCTS = [
     name: '40oz Tumbler',
     subtitle: 'Insulated Stainless',
     price: '$34.00',
-    colors: ['#d1d5db', '#18x181b', '#dc2626'],
+    colors: ['#d1d5db', '#18181b', '#dc2626'],
     colorNames: ['Silver', 'Matte Black', 'Red'],
     image: mugImg,
     compatibleTechniques: ['laser'],
@@ -131,7 +139,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Tough Phone Case',
     subtitle: 'Dual-Layer Impact Polycarbonate',
     price: '$22.00',
-    colors: ['#ffffff', '#18x181b', '#d97706'],
+    colors: ['#ffffff', '#18181b', '#d97706'],
     colorNames: ['White', 'Black', 'Amber'],
     image: phoneCaseImg,
     compatibleTechniques: ['uv_print'],
@@ -142,7 +150,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Canvas Tote Bag',
     subtitle: '15L Natural Canvas',
     price: '$19.00',
-    colors: ['#f3e8d0', '#18x181b'],
+    colors: ['#f3e8d0', '#18181b'],
     colorNames: ['Natural', 'Black'],
     image: whiteTshirtImg,
     compatibleTechniques: ['screen_print', 'dtg'],
@@ -153,7 +161,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Snapback Cap',
     subtitle: 'Flat Brim, Adjustable',
     price: '$26.00',
-    colors: ['#ffffff', '#18x181b', '#1e3a8a'],
+    colors: ['#ffffff', '#18181b', '#1e3a8a'],
     colorNames: ['White', 'Black', 'Navy'],
     image: whiteTshirtImg,
     darkImage: blackTshirtImg,
@@ -166,7 +174,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Throw Pillow',
     subtitle: '18-18 Polyester Cover',
     price: '$29.00',
-    colors: ['#ffffff', '#18x181b', '#f59e0b'],
+    colors: ['#ffffff', '#18181b', '#f59e0b'],
     colorNames: ['White', 'Black', 'Amber'],
     image: whiteTshirtImg,
     compatibleTechniques: ['dtg'],
@@ -189,7 +197,7 @@ const BUILT_IN_PRODUCTS = [
     name: 'Hardcover Notebook',
     subtitle: 'A5, 160 pages',
     price: '$16.00',
-    colors: ['#ffffff', '#18x181b', '#0284c7'],
+    colors: ['#ffffff', '#18181b', '#0284c7'],
     colorNames: ['White', 'Black', 'Blue'],
     image: whiteTshirtImg,
     compatibleTechniques: ['uv_print'],
@@ -208,16 +216,80 @@ const BUILT_IN_PRODUCTS = [
   },
 ];
 
-const FONTS = [
-  { label: 'Poppins', value: 'Poppins' },
-  { label: 'Inter', value: 'Inter' },
-  { label: 'Playfair Display', value: 'Playfair Display' },
-  { label: 'Oswald', value: 'Oswald' },
-  { label: 'Pacifico', value: 'Pacifico' },
-  { label: 'Bebas Neue', value: 'Bebas Neue' },
-  { label: 'Raleway', value: 'Raleway' },
-  { label: 'Montserrat', value: 'Montserrat' },
+export const FONT_CATEGORIES = [
+  {
+    category: 'Clean & Modern Sans-Serif',
+    fonts: [
+      { label: 'Poppins', value: 'Poppins', fallback: 'sans-serif' },
+      { label: 'Inter', value: 'Inter', fallback: 'sans-serif' },
+      { label: 'Montserrat', value: 'Montserrat', fallback: 'sans-serif' },
+      { label: 'Roboto', value: 'Roboto', fallback: 'sans-serif' },
+      { label: 'Open Sans', value: 'Open Sans', fallback: 'sans-serif' },
+      { label: 'Lato', value: 'Lato', fallback: 'sans-serif' },
+      { label: 'Raleway', value: 'Raleway', fallback: 'sans-serif' },
+      { label: 'Plus Jakarta Sans', value: 'Plus Jakarta Sans', fallback: 'sans-serif' },
+      { label: 'Kanit', value: 'Kanit', fallback: 'sans-serif' },
+      { label: 'Syne', value: 'Syne', fallback: 'sans-serif' },
+    ],
+  },
+  {
+    category: 'Bold Display & Streetwear',
+    fonts: [
+      { label: 'Bebas Neue', value: 'Bebas Neue', fallback: 'sans-serif' },
+      { label: 'Oswald', value: 'Oswald', fallback: 'sans-serif' },
+      { label: 'Anton', value: 'Anton', fallback: 'sans-serif' },
+      { label: 'Archivo Black', value: 'Archivo Black', fallback: 'sans-serif' },
+      { label: 'Righteous', value: 'Righteous', fallback: 'cursive' },
+      { label: 'Bangers', value: 'Bangers', fallback: 'cursive' },
+    ],
+  },
+  {
+    category: 'Handwriting & Script',
+    fonts: [
+      { label: 'Pacifico', value: 'Pacifico', fallback: 'cursive' },
+      { label: 'Dancing Script', value: 'Dancing Script', fallback: 'cursive' },
+      { label: 'Great Vibes', value: 'Great Vibes', fallback: 'cursive' },
+      { label: 'Satisfy', value: 'Satisfy', fallback: 'cursive' },
+      { label: 'Caveat', value: 'Caveat', fallback: 'cursive' },
+      { label: 'Sacramento', value: 'Sacramento', fallback: 'cursive' },
+      { label: 'Permanent Marker', value: 'Permanent Marker', fallback: 'cursive' },
+      { label: 'Yellowtail', value: 'Yellowtail', fallback: 'cursive' },
+      { label: 'Courgette', value: 'Courgette', fallback: 'cursive' },
+      { label: 'Kalam', value: 'Kalam', fallback: 'cursive' },
+    ],
+  },
+  {
+    category: 'Serif & Luxury',
+    fonts: [
+      { label: 'Playfair Display', value: 'Playfair Display', fallback: 'serif' },
+      { label: 'Cinzel', value: 'Cinzel', fallback: 'serif' },
+      { label: 'Merriweather', value: 'Merriweather', fallback: 'serif' },
+      { label: 'Cormorant Garamond', value: 'Cormorant Garamond', fallback: 'serif' },
+      { label: 'Abril Fatface', value: 'Abril Fatface', fallback: 'serif' },
+      { label: 'DM Serif Display', value: 'DM Serif Display', fallback: 'serif' },
+      { label: 'Prata', value: 'Prata', fallback: 'serif' },
+      { label: 'Lora', value: 'Lora', fallback: 'serif' },
+    ],
+  },
+  {
+    category: 'Retro & Novelty',
+    fonts: [
+      { label: 'Lobster', value: 'Lobster', fallback: 'cursive' },
+      { label: 'Special Elite', value: 'Special Elite', fallback: 'cursive' },
+      { label: 'Rye', value: 'Rye', fallback: 'serif' },
+      { label: 'Creepster', value: 'Creepster', fallback: 'cursive' },
+      { label: 'Press Start 2P', value: 'Press Start 2P', fallback: 'monospace' },
+      { label: 'Monoton', value: 'Monoton', fallback: 'cursive' },
+    ],
+  },
 ];
+
+export const FONTS = FONT_CATEGORIES.flatMap((c) => c.fonts);
+
+export const getFontFallback = (fontName) => {
+  const match = FONTS.find((f) => f.value.toLowerCase() === String(fontName || '').toLowerCase());
+  return match?.fallback || 'sans-serif';
+};
 
 const COLOR_PALETTE = [
   { label: 'Jet Black', hex: '#111827' },
@@ -392,6 +464,7 @@ CfsToast.propTypes = {
 // 
 function CanvasStage({
   activeProduct,
+  activeProductImage,
   selectedColorIndex,
   customText,
   fontFamily,
@@ -434,17 +507,16 @@ function CanvasStage({
   const colorStr = (productColor || '').toLowerCase();
   const colorNameStr = (colorName || '').toLowerCase();
   const isDark =
-    colorStr === '#18x181b' || colorStr === '#111827' || colorStr === '#000000' ||
+    colorStr === '#18181b' || colorStr === '#111827' || colorStr === '#000000' ||
     colorStr === '#374151' || colorNameStr.includes('black') ||
     colorNameStr.includes('charcoal') || colorNameStr.includes('dark');
-
   const isNavy = colorStr === '#1e3a8a' || colorNameStr.includes('navy');
   const isCrimson = colorStr === '#991b1b' || colorNameStr.includes('crimson') || colorNameStr.includes('red');
   const isForestGreen = colorStr === '#15803d' || colorNameStr.includes('green');
 
   // Which mockup image to use
   const rawId = (activeProduct.id || '').toLowerCase();
-  let baseMockup = activeProduct.image || whiteTshirtImg;
+  let baseMockup = activeProductImage || activeProduct.image || whiteTshirtImg;
   if (!activeProduct.storeProductId) {
     if (rawId === 'tshirt' || rawId.includes('tee') || rawId.includes('shirt') || rawId.includes('longsleeve')) {
       baseMockup = isDark ? blackTshirtImg : whiteTshirtImg;
@@ -459,7 +531,7 @@ function CanvasStage({
 
   // Effective text color on dark garments
   let effTextColor = textColor;
-  if ((isDark || isNavy || isCrimson || isForestGreen) && (textColor === '#111827' || textColor === '#18x181b')) {
+  if ((isDark || isNavy || isCrimson || isForestGreen) && (textColor === '#111827' || textColor === '#18181b')) {
     effTextColor = '#ffffff';
   }
 
@@ -504,25 +576,6 @@ function CanvasStage({
         loading="lazy"
       />
 
-      {/* Dynamic color tint overlay */}
-      {!activeProduct.storeProductId && (isNavy || isCrimson) && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundColor: isNavy ? '#1e3a8a' : '#991b1b',
-          mixBlendMode: 'multiply', opacity: 0.88, pointerEvents: 'none',
-          maskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
-          WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
-        }} />
-      )}
-      {!activeProduct.storeProductId && isForestGreen && (
-        <div style={{
-          position: 'absolute', inset: 0, backgroundColor: '#15803d',
-          mixBlendMode: 'multiply', opacity: 0.82, pointerEvents: 'none',
-          maskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
-          WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black 60%, transparent 95%)',
-        }} />
-      )}
-
       {/* Print zone guide */}
       {showGuides && (
         <div
@@ -534,7 +587,7 @@ function CanvasStage({
         />
       )}
 
-      {/*  Design Print Area  */}
+      {/* Design Print Area */}
       <div
         className="cfs-design-layer"
         style={{
@@ -569,10 +622,8 @@ function CanvasStage({
                   key={img.id}
                   style={{
                     position: 'absolute',
-                    /* Center anchor: images are positioned from the middle of the print zone */
                     left: '50%',
                     top: '50%',
-                    /* Transform anchored at center so translate(x,y) moves from center outward */
                     transform: `translate(calc(-50% + ${curX}px), calc(-50% + ${curY}px)) rotate(${curRotation}deg) scale(${curScale / 100})`,
                     transformOrigin: 'center center',
                     mixBlendMode: curBlend,
@@ -582,7 +633,6 @@ function CanvasStage({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    /* Size is relative to the print zone so images are naturally sized */
                     maxWidth: '80%',
                     maxHeight: '80%',
                   }}
@@ -645,7 +695,7 @@ function CanvasStage({
           <div
             className="cfs-design-text"
             style={{
-              fontFamily: `'${fontFamily}', sans-serif`,
+              fontFamily: `'${fontFamily}', ${getFontFallback(fontFamily)}`,
               fontSize: `${(textScale / 100) * 28}px`,
               fontWeight: isBold ? 800 : 400,
               fontStyle: isItalic ? 'italic' : 'normal',
@@ -669,6 +719,7 @@ function CanvasStage({
         {additionalGraphicLayers
           .filter((l) => l.visible !== false)
           .map((layer) => (
+
             <div
               key={layer.id}
               style={{
@@ -692,7 +743,7 @@ function CanvasStage({
               key={layer.id}
               className="cfs-design-text"
               style={{
-                fontFamily: `'${layer.font}', sans-serif`,
+                fontFamily: `'${layer.font}', ${getFontFallback(layer.font)}`,
                 fontSize: `${(layer.scale / 100) * 18}px`,
                 fontWeight: layer.bold ? 800 : 400,
                 color: layer.color,
@@ -746,117 +797,6 @@ CanvasStage.propTypes = {
   canvasHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
 };
 
-/** Inline SVG default graphic for built-in templates */
-function DefaultSvgGraphic({ name, color = '#111827', size = 90 }) {
-  const norm = (name || '').toLowerCase();
-  const s = size;
-
-  if (norm.includes('mountain') || norm.includes('adventure')) {
-    return (
-      <svg width={s} height={s * 0.7} viewBox="0 0 160 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M80 15L125 85H35L80 15Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
-        <path d="M80 32L95 55L85 62L75 52L65 65L80 32Z" fill={color} opacity="0.85" />
-        <line x1="20" y1="92" x2="140" y2="92" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (norm.includes('beach') || norm.includes('sunset')) {
-    return (
-      <svg width={s} height={s * 0.7} viewBox="0 0 140 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="70" cy="50" r="38" stroke={color} strokeWidth="4" />
-        <circle cx="70" cy="38" r="14" fill={color} opacity="0.8" />
-        <path d="M35 55Q70 42 105 55" stroke={color} strokeWidth="4" strokeLinecap="round" />
-        <path d="M38 65Q70 52 102 65" stroke={color} strokeWidth="4" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (norm.includes('skull') || norm.includes('wild')) {
-    return (
-      <svg width={s} height={s * 0.9} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M60 15C42 15 30 28 30 46C30 58 37 68 45 72V85H75V72C83 68 90 58 90 46C90 28 78 15 60 15Z" stroke={color} strokeWidth="4" />
-        <circle cx="48" cy="48" r="7" fill={color} />
-        <circle cx="72" cy="48" r="7" fill={color} />
-      </svg>
-    );
-  }
-  if (norm.includes('love') || norm.includes('heart')) {
-    return (
-      <svg width={s} height={s * 0.9} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
-        <path d="M60 88 15 47C-7 24 25-4 49 17l11 11 11-11C95-4 127 24 105 47L60 88Z" />
-      </svg>
-    );
-  }
-  if (norm.includes('pet')) {
-    return (
-      <svg width={s} height={s * 0.9} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="60" cy="65" rx="23" ry="20" />
-        <ellipse cx="29" cy="39" rx="10" ry="14" transform="rotate(-25 29 39)" />
-        <ellipse cx="48" cy="23" rx="10" ry="14" transform="rotate(-10 48 23)" />
-        <ellipse cx="72" cy="23" rx="10" ry="14" transform="rotate(10 72 23)" />
-        <ellipse cx="91" cy="39" rx="10" ry="14" transform="rotate(25 91 39)" />
-      </svg>
-    );
-  }
-  if (norm.includes('christmas') || norm.includes('merry')) {
-    return (
-      <svg width={s} height={s} viewBox="0 0 120 110" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="m60 8-30 38h17L22 72h76L73 46h17L60 8Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
-        <path d="M53 72h14v24H53z" fill={color} />
-      </svg>
-    );
-  }
-  if (norm.includes('logo') || norm.includes('brand') || norm.includes('minimal')) {
-    return (
-      <svg width={s} height={s * 0.8} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polygon points="60,18 95,78 25,78" stroke={color} strokeWidth="5" strokeLinejoin="round" fill="none" />
-        <polygon points="60,38 78,70 42,70" fill={color} opacity="0.6" />
-        <circle cx="60" cy="18" r="5" fill={color} />
-      </svg>
-    );
-  }
-  if (norm.includes('birthday') || norm.includes('celebration')) {
-    return (
-      <svg width={s} height={s * 0.8} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="25" y="45" width="70" height="42" rx="4" stroke={color} strokeWidth="4" />
-        <line x1="25" y1="65" x2="95" y2="65" stroke={color} strokeWidth="3" />
-        <line x1="60" y1="45" x2="60" y2="87" stroke={color} strokeWidth="4" />
-        <path d="M48 35C40 25 60 20 60 35C60 20 80 25 72 35" stroke={color} strokeWidth="4" strokeLinecap="round" />
-        <circle cx="35" cy="20" r="3" fill={color} />
-        <circle cx="85" cy="20" r="3" fill={color} />
-      </svg>
-    );
-  }
-  if (norm.includes('2026') || norm.includes('year')) {
-    return (
-      <svg width={s} height={s * 0.8} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polygon points="60,10 72,38 102,40 78,60 86,90 60,72 34,90 42,60 18,40 48,38" stroke={color} strokeWidth="4" fill="none" strokeLinejoin="round" />
-        <circle cx="60" cy="50" r="10" fill={color} opacity="0.75" />
-      </svg>
-    );
-  }
-  // Default: sun & waves
-  return (
-    <svg width={s} height={s * 0.7} viewBox="0 0 150 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="75" cy="42" r="22" stroke={color} strokeWidth="4" />
-      <circle cx="75" cy="42" r="14" fill={color} opacity="0.85" />
-      <line x1="75" y1="12" x2="75" y2="4" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="96" y1="21" x2="102" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="105" y1="42" x2="113" y2="42" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="45" y1="42" x2="37" y2="42" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <path d="M30 72C42 66 52 76 65 72C78 68 88 78 100 72" stroke={color} strokeWidth="3.5" strokeLinecap="round" />
-      <path d="M36 82C46 78 56 86 68 82C80 78 90 86 102 82" stroke={color} strokeWidth="3" strokeLinecap="round" opacity="0.65" />
-    </svg>
-  );
-}
-
-DefaultSvgGraphic.propTypes = {
-  name: PropTypes.string,
-  color: PropTypes.string,
-  size: PropTypes.number,
-};
-
-// 
-// TOOL IDs
 // -----------------------------------------------------------------------------
 // Pure ASCII SVG Icon Components
 // -----------------------------------------------------------------------------
@@ -1093,7 +1033,8 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
     const addProd = (p) => {
       if (p && p.id && !seenIds.has(p.id)) {
         seenIds.add(p.id);
-        list.push(p);
+        const resolvedImage = p.image || MOCKUP_ASSET_MAP[p.mockupType] || whiteTshirtImg;
+        list.push({ ...p, image: resolvedImage });
       }
     };
     if (Array.isArray(storeProducts)) {
@@ -1163,6 +1104,15 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
     !activeProduct.storeProductId || (variantMatrixLoaded && Boolean(activeVariant));
   const activeProductImage = activeVariant?.image || activeProduct.image;
   const activePrintArea = getProductPrintArea(activeProduct);
+  const selectedProductColor = activeProduct.colors[selectedColorIndex] || '';
+  const selectedProductColorName = activeProduct.colorNames?.[selectedColorIndex] || '';
+  const darkColorSelected = /^(?:#18181b|#111827|#000000)$/.test(selectedProductColor.toLowerCase()) ||
+    /black|charcoal|navy|crimson|dark/i.test(selectedProductColorName);
+  const publishMockupUrl = activeProduct.storeProductId
+    ? (activeVariant?.image || activeProductImage)
+    : (darkColorSelected && activeProduct.darkImage
+      ? activeProduct.darkImage
+      : activeProductImage || activeProduct.image);
   const defaultProductPrice = String(activeVariant?.price || activeProduct.price || '').replace(/[^0-9.]/g, '');
 
   const [customProductPrice, setCustomProductPrice] = useState(defaultProductPrice || '0.00');
@@ -1175,6 +1125,18 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
   const [customProductUrl, setCustomProductUrl] = useState('');
 
   //  Tool / Inspector 
+  // Dynamically load Google Fonts to guarantee 100% rendering in any container
+  useEffect(() => {
+    const FONT_LINK_ID = 'customforge-google-fonts';
+    if (!document.getElementById(FONT_LINK_ID)) {
+      const link = document.createElement('link');
+      link.id = FONT_LINK_ID;
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Anton&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Caveat:wght@600;700&family=Cinzel:wght@600;700;800&family=Cormorant+Garamond:wght@600;700&family=Courgette&family=Creepster&family=DM+Serif+Display&family=Dancing+Script:wght@600;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Kalam:wght@700&family=Kanit:wght@500;700;800&family=Lato:wght@400;700&family=Lobster&family=Lora:wght@500;600;700&family=Merriweather:wght@400;700&family=Monoton&family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;600;700&family=Oswald:wght@500;600;700&family=Outfit:wght@400;600;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Poppins:wght@400;600;700;800&family=Prata&family=Press+Start+2P&family=Raleway:wght@400;600;700&family=Righteous&family=Roboto:wght@400;500;700&family=Rye&family=Sacramento&family=Satisfy&family=Special+Elite&family=Syne:wght@600;700;800&family=Yellowtail&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
+
   const [activeTool, setActiveTool] = useState(TOOL.TEXT);
   const [showGuides, setShowGuides] = useState(false);
 
@@ -1192,6 +1154,13 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
   const [textY, setTextY] = useState(32);
   const [textRotation, setTextRotation] = useState(0);
 
+  // Preload selected font into document.fonts
+  useEffect(() => {
+    if (selectedFont && document.fonts?.load) {
+      document.fonts.load(`16px "${selectedFont}"`).catch(() => {});
+    }
+  }, [selectedFont]);
+
   //  Image / Artwork State 
   const [uploadedFileName, setUploadedFileName] = useState('good_vibes_sun.svg');
   const [uploadedFileSize, setUploadedFileSize] = useState('1.8 MB');
@@ -1200,6 +1169,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
   const [uploadedImages, setUploadedImages] = useState([]);
   const [selectedImageId, setSelectedImageId] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [selectedStickerCat, setSelectedStickerCat] = useState('All');
   const [imageScale, setImageScale] = useState(90);
   const [imageX, setImageX] = useState(0);
   const [imageY, setImageY] = useState(-24);
@@ -1856,8 +1826,8 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       const fn = api.shopify?.publish;
       if (typeof fn !== 'function') throw new Error('Shopify publishing unavailable.');
       const artwork = await createProductArtwork({
-        mockupUrl: !activeProduct.storeProductId && selectedProductId === 'tshirt' && [1, 4].includes(selectedColorIndex)
-          ? activeProduct.darkImage : activeProductImage,
+        mockupUrl: publishMockupUrl,
+        previewCanvasSize: 420,
         productId: selectedProductId,
         productColor: activeProduct.colors[selectedColorIndex],
         printArea: activePrintArea,
@@ -1904,7 +1874,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
     }
   }, [
     variantSelectionValid, collectionChoice, newCollectionName, customProductPrice, activeProduct, 
-    activeVariant, activeProductImage, activePrintArea, activeProductOptions,
+    activeVariant, activeProductImage, publishMockupUrl, activePrintArea, activeProductOptions,
     alignment, customText, imageRotation, imageScale, imageX, imageY,
     isBold, isItalic, isUnderline, selectedEffect, selectedFont,
     selectedColorIndex, selectedProductId, textColor, textRotation, textScale,
@@ -2075,6 +2045,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         size: selectedSize, selectedOptions: selectedOptionValues,
         productType: activeProduct.name, productColor: activeProduct.colors[selectedColorIndex],
         productColorName: activeProduct.colorNames[selectedColorIndex],
+        customPrice: customProductPrice,
         productId: activeProduct.id, colorIndex: selectedColorIndex,
         productImage: activeProduct.image || null,
         storeProductId: activeProduct.storeProductId || null,
@@ -2082,7 +2053,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       const designName = (customText || activeProduct.name).trim();
       const localId = 'design_' + Date.now();
       const localRecord = {
-        id: localId, _id: localId, name: designName,
+        id: localId, _id: localId, studioKey: localId, syncStatus: 'pending', name: designName,
         shopifyProductId: activeProduct.id, canvasState: canvasStateForLibrary,
         tags: [activeProduct.name, selectedFont],
         thumbnailUrl: uploadedImageUrl || activeProduct.image,
@@ -2097,11 +2068,28 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       await persistVersionSnapshot(note);
       let libErr = null;
       try {
-        await api.library.save({
-          id: localId, name: designName, shopifyProductId: activeProduct.id,
+        const saved = await api.library.save({
+          id: localId, studioKey: localId, name: designName, shopifyProductId: activeProduct.id,
           canvasState: canvasStateForLibrary, tags: [activeProduct.name, selectedFont],
           thumbnailUrl: uploadedImageUrl || activeProduct.image,
         });
+        const backendItem = saved?.data?.item;
+        if (backendItem?.id) {
+          const syncedRecord = {
+            ...localRecord,
+            id: String(backendItem.id),
+            _id: String(backendItem.id),
+            studioKey: localId,
+            syncStatus: 'synced',
+          };
+          try {
+            const stored = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+            localStorage.setItem('customforge_saved_designs', JSON.stringify([
+              syncedRecord,
+              ...stored.filter((item) => String(item.id || item._id) !== localId && !(item.name === designName && item.shopifyProductId === activeProduct.id)),
+            ]));
+          } catch (e) { console.warn('Synced design local write failed:', e); }
+        }
       } catch (e) { libErr = e; }
 
       setSavedSuccess(true);
@@ -2118,7 +2106,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       setIsSaving(false);
     }
   }, [
-    customText, activeProduct, selectedFont, textColor, selectedEffect, selectedSize,
+    customText, activeProduct, selectedFont, textColor, selectedEffect, selectedSize, customProductPrice,
     textScale, textX, textY, textRotation, additionalTextLayers, additionalGraphicLayers,
     imageScale, imageX, imageY, imageRotation, uploadedFileName, uploadedImageUrl,
     selectedColorIndex, selectedOptionValues, persistVersionSnapshot, addToast,
@@ -2159,6 +2147,9 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
         if (state.imageX !== undefined) setImageX(state.imageX);
         if (state.imageY !== undefined) setImageY(state.imageY);
         if (state.imageRotation !== undefined) setImageRotation(state.imageRotation);
+        if (state.customPrice !== undefined || state.customProductPrice !== undefined) setCustomProductPrice(state.customPrice ?? state.customProductPrice);
+        if (state.selectedOptions) setSelectedOptionValues((current) => ({ ...current, ...state.selectedOptions }));
+        if (state.size) setSelectedSize(state.size);
         if (Array.isArray(state.additionalTextLayers)) setAdditionalTextLayers(state.additionalTextLayers);
         if (Array.isArray(state.additionalGraphicLayers)) setAdditionalGraphicLayers(state.additionalGraphicLayers);
         if (state.uploadedFileName !== undefined) setUploadedFileName(state.uploadedFileName);
@@ -2454,7 +2445,19 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                   <div>
                     <label className="cfs-label">Font Family</label>
                     <select className="cfs-select" value={selectedFont} onChange={(e) => setSelectedFont(e.target.value)}>
-                      {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                      {FONT_CATEGORIES.map((cat) => (
+                        <optgroup key={cat.category} label={cat.category}>
+                          {cat.fonts.map((f) => (
+                            <option
+                              key={f.value}
+                              value={f.value}
+                              style={{ fontFamily: `'${f.value}', ${f.fallback}` }}
+                            >
+                              {f.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
 
@@ -2788,7 +2791,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                     <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={addTextLayer} disabled={additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT}>
                       + Text Layer
                     </button>
-                    <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={() => addGraphicLayer()} disabled={additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT}>
+                    <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={() => addGraphicLayer('Good Vibes')} disabled={additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT}>
                       + Graphic
                     </button>
                     <button className="cfs-btn cfs-btn-secondary cfs-btn-sm" onClick={() => setActiveTool(TOOL.UPLOAD)}>
@@ -2796,12 +2799,86 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                     </button>
                   </div>
 
-                  <div className="cfs-section-heading" style={{ marginTop: 4 }}>Quick Layout Presets</div>
+                  <div className="cfs-section-heading" style={{ marginTop: 14 }}>Graphic Stickers (All Events & Holidays)</div>
+                  
+                  {/* Category Filter Tabs */}
+                  <div className="cfs-cat-tabs" style={{ marginBottom: 10 }}>
+                    {STICKER_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        className={`cfs-cat-tab ${selectedStickerCat === cat ? 'active' : ''}`}
+                        onClick={() => setSelectedStickerCat(cat)}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Colorful Multi-Event Graphic Stickers Grid */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: 8,
+                      maxHeight: 330,
+                      overflowY: 'auto',
+                      paddingRight: 4,
+                    }}
+                  >
+                    {STICKER_CATALOG
+                      .filter((stk) => selectedStickerCat === 'All' || stk.category === selectedStickerCat)
+                      .map((stk) => (
+                        <button
+                          key={stk.name}
+                          type="button"
+                          className="cfs-template-card"
+                          style={{
+                            padding: '10px 4px 8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            borderRadius: 8,
+                            position: 'relative',
+                          }}
+                          onClick={() => addGraphicLayer(stk.name)}
+                          disabled={additionalTextLayers.length + additionalGraphicLayers.length >= LAYER_LIMIT}
+                          title={`Add ${stk.name} sticker (${stk.event})`}
+                        >
+                          <DefaultSvgGraphic name={stk.name} size={42} />
+                          <span
+                            style={{
+                              fontSize: 10,
+                              marginTop: 6,
+                              fontWeight: 600,
+                              color: 'var(--cfs-text)',
+                              textAlign: 'center',
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {stk.label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 8.5,
+                              color: 'var(--cfs-text-dim)',
+                              textAlign: 'center',
+                              marginTop: 2,
+                            }}
+                          >
+                            {stk.category}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+
+                  <div className="cfs-section-heading" style={{ marginTop: 12 }}>Quick Layout Presets</div>
                   {[
                     { label: 'Image Top', action: () => { setImageY(-24); setTextY(32); setImageX(0); setTextX(0); } },
                     { label: 'Text Top', action: () => { setTextY(-32); setImageY(24); setImageX(0); setTextX(0); } },
                     { label: 'Side by Side', action: () => { setImageX(-35); setImageY(0); setTextX(35); setTextY(0); } },
-                    <button className="cfs-nudge-btn" onClick={() => { setImageX(0); setImageY(0); }} title="Center"><IconCenterTarget /></button>
+                    { label: 'Center All', action: () => { setImageX(0); setImageY(0); setTextX(0); setTextY(0); } },
                   ].map((p) => (
                     <button key={p.label} className="cfs-btn cfs-btn-secondary cfs-btn-sm" style={{ width: '100%', marginBottom: 4 }} onClick={p.action}>
                       {p.label}
@@ -2877,13 +2954,56 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
                       <div style={{ marginBottom: 6 }}>
                         <label className="cfs-label">Font</label>
                         <select className="cfs-select" value={layer.font} onChange={(e) => updateTextLayer(layer.id, { font: e.target.value })}>
-                          {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                          {FONT_CATEGORIES.map((cat) => (
+                            <optgroup key={cat.category} label={cat.category}>
+                              {cat.fonts.map((f) => (
+                                <option
+                                  key={f.value}
+                                  value={f.value}
+                                  style={{ fontFamily: `'${f.value}', ${f.fallback}` }}
+                                >
+                                  {f.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
                         </select>
                       </div>
                       <CfsSlider label="Scale" value={layer.scale} onChange={(v) => updateTextLayer(layer.id, { scale: v })} min={20} max={200} unit="%" />
                       <CfsSlider label="X" value={layer.x} onChange={(v) => updateTextLayer(layer.id, { x: v })} min={-140} max={140} unit="px" />
                       <CfsSlider label="Y" value={layer.y} onChange={(v) => updateTextLayer(layer.id, { y: v })} min={-140} max={140} unit="px" />
                       <CfsSlider label="Rotation" value={layer.rotation} onChange={(v) => updateTextLayer(layer.id, { rotation: v })} min={-180} max={180} unit="deg" />
+                    </div>
+                  ))}
+
+                  {/* Graphic sticker layer controls */}
+                  {additionalGraphicLayers.map((layer) => (
+                    <div key={`ctrl-${layer.id}`} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '10px 10px', marginTop: 8 }}>
+                      <div className="cfs-row-between" style={{ marginBottom: 6 }}>
+                        <span className="cfs-text-sm" style={{ fontWeight: 600, color: 'var(--cfs-text)' }}>
+                          {layer.name}
+                        </span>
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: layer.color || textColor, display: 'inline-block', border: '1px solid rgba(255,255,255,0.3)' }} />
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <label className="cfs-label">Color</label>
+                        <div className="cfs-swatches" style={{ gap: 4 }}>
+                          {COLOR_PALETTE.slice(0, 8).map((c) => (
+                            <button
+                              key={c.hex}
+                              type="button"
+                              className={`cfs-swatch ${layer.color === c.hex ? 'active' : ''}`}
+                              style={{ backgroundColor: c.hex, width: 20, height: 20 }}
+                              onClick={() => updateGraphicLayer(layer.id, { color: c.hex })}
+                              title={c.label}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <CfsSlider label="Scale" value={layer.scale ?? 55} onChange={(v) => updateGraphicLayer(layer.id, { scale: v })} min={20} max={200} unit="%" />
+                      <CfsSlider label="X Position" value={layer.x ?? 0} onChange={(v) => updateGraphicLayer(layer.id, { x: v })} min={-140} max={140} unit="px" />
+                      <CfsSlider label="Y Position" value={layer.y ?? 0} onChange={(v) => updateGraphicLayer(layer.id, { y: v })} min={-140} max={140} unit="px" />
+                      <CfsSlider label="Rotation" value={layer.rotation ?? 0} onChange={(v) => updateGraphicLayer(layer.id, { rotation: v })} min={-180} max={180} unit="deg" />
                     </div>
                   ))}
                 </div>
@@ -3014,6 +3134,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
           <div className="cfs-canvas-scroll">
             <CanvasStage
               activeProduct={activeProduct}
+              activeProductImage={activeProductImage}
               selectedColorIndex={selectedColorIndex}
               customText={customText}
               fontFamily={selectedFont}
@@ -3208,7 +3329,7 @@ export default function CustomizerEditor({ storeProducts = [], catalogError = ''
       </div>
 
       {/* ---------------- MODALS ---------------- */}
-
+ 
       {/* Version History Modal (Polaris - untouched) */}
       <VersionComparisonModal
         open={versionCompareOpen}

@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import DefaultSvgGraphic from './DefaultSvgGraphic';
 import whiteTshirtImg from '../assets/mockups/white_tshirt.jpg';
 import blackTshirtImg from '../assets/mockups/black_tshirt.jpg';
 import hoodieImg from '../assets/mockups/hoodie.jpg';
@@ -30,137 +31,22 @@ export const MOCKUP_IMAGES = {
   phoneCase: phoneCaseImg,
 };
 
-// Built-in vector graphics for design templates and uploaded artwork
-function TemplateVectorGraphic({ templateName, color = '#111827', width = 120, height = 90 }) {
-  const norm = (templateName || '').toLowerCase();
-
-  if (norm.includes('mountain') || norm.includes('adventure')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 160 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-        <path d="M80 15L125 85H35L80 15Z" stroke={color} strokeWidth="5" strokeLinejoin="round" fill="none" />
-        <path d="M80 32L95 55L85 62L75 52L65 65L80 32Z" fill={color} opacity="0.85" />
-        <path d="M115 50L145 85H85L115 50Z" stroke={color} strokeWidth="4" strokeLinejoin="round" fill="none" opacity="0.7" />
-        <path d="M45 55L20 85H70L45 55Z" stroke={color} strokeWidth="4" strokeLinejoin="round" fill="none" opacity="0.7" />
-        <line x1="20" y1="92" x2="140" y2="92" stroke={color} strokeWidth="3" strokeLinecap="round" />
-        <circle cx="80" cy="8" r="4" fill={color} />
-      </svg>
-    );
-  }
-
-  TemplateVectorGraphic.propTypes = {
-    templateName: PropTypes.string,
-    color: PropTypes.string,
-    width: PropTypes.number,
-    height: PropTypes.number,
-  };
-
-  if (norm.includes('beach') || norm.includes('sunset')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 140 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-        <circle cx="70" cy="50" r="38" stroke={color} strokeWidth="4" fill="none" />
-        <path d="M35 55Q70 42 105 55" stroke={color} strokeWidth="4" strokeLinecap="round" />
-        <path d="M38 65Q70 52 102 65" stroke={color} strokeWidth="4" strokeLinecap="round" />
-        <path d="M44 75Q70 66 96 75" stroke={color} strokeWidth="3" strokeLinecap="round" />
-        <circle cx="70" cy="38" r="14" fill={color} opacity="0.8" />
-        <path d="M70 14V20M48 24L52 28M92 24L88 28" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  if (norm.includes('skull')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-        <path d="M60 15C42 15 30 28 30 46C30 58 37 68 45 72V85H75V72C83 68 90 58 90 46C90 28 78 15 60 15Z" stroke={color} strokeWidth="4" strokeLinejoin="round" fill="none" />
-        <circle cx="48" cy="48" r="7" fill={color} />
-        <circle cx="72" cy="48" r="7" fill={color} />
-        <path d="M60 58L57 65H63L60 58Z" fill={color} />
-        <line x1="52" y1="78" x2="52" y2="85" stroke={color} strokeWidth="3" />
-        <line x1="60" y1="78" x2="60" y2="85" stroke={color} strokeWidth="3" />
-        <line x1="68" y1="78" x2="68" y2="85" stroke={color} strokeWidth="3" />
-      </svg>
-    );
-  }
-
-  if (norm.includes('love') || norm.includes('heart')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
-        <path d="M60 88 15 47C-7 24 25-4 49 17l11 11 11-11C95-4 127 24 105 47L60 88Z" />
-      </svg>
-    );
-  }
-
-  if (norm.includes('christmas')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 110" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="m60 8-30 38h17L22 72h76L73 46h17L60 8Z" stroke={color} strokeWidth="5" strokeLinejoin="round" />
-        <path d="M53 72h14v24H53z" fill={color} />
-        <circle cx="60" cy="12" r="5" fill={color} />
-      </svg>
-    );
-  }
-
-  if (norm.includes('pet')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 100" fill={color} xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="60" cy="65" rx="23" ry="20" />
-        <ellipse cx="29" cy="39" rx="10" ry="14" transform="rotate(-25 29 39)" />
-        <ellipse cx="48" cy="23" rx="10" ry="14" transform="rotate(-10 48 23)" />
-        <ellipse cx="72" cy="23" rx="10" ry="14" transform="rotate(10 72 23)" />
-        <ellipse cx="91" cy="39" rx="10" ry="14" transform="rotate(25 91 39)" />
-      </svg>
-    );
-  }
-
-  if (norm.includes('logo') || norm.includes('minimal') || norm.includes('brand')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-        <polygon points="60,18 95,78 25,78" stroke={color} strokeWidth="5" strokeLinejoin="round" fill="none" />
-        <polygon points="60,38 78,70 42,70" fill={color} opacity="0.6" />
-        <circle cx="60" cy="18" r="5" fill={color} />
-      </svg>
-    );
-  }
-
-  if (norm.includes('birthday') || norm.includes('celebration')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-        <rect x="25" y="45" width="70" height="42" rx="4" stroke={color} strokeWidth="4" />
-        <line x1="25" y1="65" x2="95" y2="65" stroke={color} strokeWidth="3" />
-        <line x1="60" y1="45" x2="60" y2="87" stroke={color} strokeWidth="4" />
-        <path d="M48 35C40 25 60 20 60 35C60 20 80 25 72 35" stroke={color} strokeWidth="4" strokeLinecap="round" />
-        <circle cx="35" cy="20" r="3" fill={color} />
-        <circle cx="85" cy="20" r="3" fill={color} />
-      </svg>
-    );
-  }
-
-  if (norm.includes('2026') || norm.includes('year')) {
-    return (
-      <svg width={width} height={height} viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-        <polygon points="60,10 72,38 102,40 78,60 86,90 60,72 34,90 42,60 18,40 48,38" stroke={color} strokeWidth="4" fill="none" strokeLinejoin="round" />
-        <circle cx="60" cy="50" r="10" fill={color} opacity="0.75" />
-      </svg>
-    );
-  }
-
-  // Default / "Good Vibes" retro vintage sun & waves insignia
+// Built-in vector graphics for design templates, festive stickers, and foreign event artwork
+function TemplateVectorGraphic({ templateName, stickerId, color = '#111827', width = 120, height = 90 }) {
   return (
-    <svg width={width} height={height} viewBox="0 0 150 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto' }}>
-      {/* Radiant Sun */}
-      <circle cx="75" cy="42" r="22" stroke={color} strokeWidth="4" fill="none" />
-      <circle cx="75" cy="42" r="14" fill={color} opacity="0.85" />
-      {/* Sun rays */}
-      <line x1="75" y1="12" x2="75" y2="4" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="96" y1="21" x2="102" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="105" y1="42" x2="113" y2="42" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="54" y1="21" x2="48" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="45" y1="42" x2="37" y2="42" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      {/* Oceanic ripples below */}
-      <path d="M30 72C42 66 52 76 65 72C78 68 88 78 100 72C112 66 120 74 125 72" stroke={color} strokeWidth="3.5" strokeLinecap="round" fill="none" />
-      <path d="M36 82C46 78 56 86 68 82C80 78 90 86 102 82C112 78 118 84 122 82" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.65" />
-    </svg>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width, height }}>
+      <DefaultSvgGraphic name={templateName} stickerId={stickerId} color={color} size={Math.min(width, height ? height * 1.25 : width)} />
+    </div>
   );
 }
+
+TemplateVectorGraphic.propTypes = {
+  templateName: PropTypes.string,
+  stickerId: PropTypes.string,
+  color: PropTypes.string,
+  width: PropTypes.number,
+  height: PropTypes.number,
+};
 
 const HEIGHT_PRESETS = {
   sm: '220px',
@@ -558,6 +444,7 @@ export default function DesignMockupPreview({
           >
             <TemplateVectorGraphic
               templateName={layer.name}
+              stickerId={layer.stickerId}
               color={layer.color || '#111827'}
               width={Math.round(100 * (Number(layer.scale) || 55) / 100)}
               height={Math.round(80 * (Number(layer.scale) || 55) / 100)}

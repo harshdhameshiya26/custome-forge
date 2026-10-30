@@ -43,62 +43,121 @@ export default function CustomerDesigns() {
   const [bannerAlert, setBannerAlert] = useState(null);
   const [deleteConfirmDesign, setDeleteConfirmDesign] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  // Fetch from backend and merge with local storage
-  const fetchDesigns = useCallback(() => {
-    setLoading(true);
-    setError(null);
-
-    // 1. Read locally saved designs from localStorage for instant display
+  const syncPendingDesigns = useCallback(async () => {
     let localList = [];
     try {
       localList = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
       if (!Array.isArray(localList)) localList = [];
-    } catch {
-      localList = [];
+    } catch { localList = []; }
+
+    const pending = localList.filter((item) => item.syncStatus === 'pending' || item.syncStatus === 'failed');
+    if (!pending.length) return [];
+
+    const syncedIds = new Set();
+    for (const item of pending) {
+      try {
+        const saved = await api.library.save({
+          studioKey: item.studioKey || item.id || item._id,
+          name: item.name,
+          shopifyProductId: item.shopifyProductId || item.canvasState?.productId,
+          canvasState: item.canvasState,
+          tags: item.tags,
+          thumbnailUrl: item.thumbnailUrl,
+        });
+        const backendItem = saved?.data?.item;
+        if (backendItem?.id) syncedIds.add(String(item.id || item._id));
+      } catch (syncError) {
+        console.warn('Pending library sync failed:', syncError.message);
+      }
     }
 
-    // 2. Fetch from backend and merge seamlessly
-    api.library
-      .listAll()
-      .then((json) => {
-        let remoteList = [];
-        if (Array.isArray(json?.data)) {
-          remoteList = json.data;
-        } else if (Array.isArray(json?.data?.items)) {
-          remoteList = json.data.items;
-        }
-
-        // Merge without duplicates
-        const combined = [...localList];
-        remoteList.forEach((remote) => {
-          const rId = String(remote.id || remote._id);
-          const exists = combined.some(
-            (item) =>
-              String(item.id || item._id) === rId ||
-              (item.name === remote.name && item.shopifyProductId === remote.shopifyProductId),
-          );
-          if (!exists) {
-            combined.push({ ...remote, id: rId });
-          }
-        });
-
-        try {
-          localStorage.setItem('customforge_saved_designs', JSON.stringify(combined));
-        } catch {}
-
-        setDesigns(combined);
-      })
-      .catch((err) => {
-        console.warn('Could not load designs from API:', err.message);
-        setDesigns(localList);
-      })
-      .finally(() => setLoading(false));
+    const current = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+    const updated = current.map((item) => syncedIds.has(String(item.id || item._id))
+      ? { ...item, syncStatus: 'synced' }
+      : item.syncStatus === 'pending' || item.syncStatus === 'failed'
+        ? { ...item, syncStatus: 'failed' }
+        : item);
+    localStorage.setItem('customforge_saved_designs', JSON.stringify(updated));
+    return updated;
   }, []);
+
+  // Fetch from backend and merge with local storage
+  const fetchDesigns = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    let localList = [];
+    try {
+      localList = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+      if (!Array.isArray(localList)) localList = [];
+    } catch { localList = []; }
+
+    await syncPendingDesigns();
+    try {
+      localList = JSON.parse(localStorage.getItem('customforge_saved_designs') || '[]');
+      if (!Array.isArray(localList)) localList = [];
+    } catch { localList = []; }
+
+    try {
+      let remoteList = [];
+      let page = 1;
+      let pages = 1;
+      do {
+        const json = await api.library.listAll({ page, limit: 100 });
+        const pageItems = Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.data?.items)
+            ? json.data.items
+            : [];
+        remoteList.push(...pageItems);
+        pages = Number(json?.data?.pagination?.pages) || 1;
+        page += 1;
+      } while (page <= pages);
+
+      // Prefer remote records, then add unsynced/local-only records.
+      const remoteByKey = new Map(remoteList.map((item) => [
+        String(item.studioKey || item.id || item._id),
+        { ...item, id: String(item.id || item._id), syncStatus: 'synced' },
+      ]));
+      const combined = [...remoteByKey.values()];
+      localList.forEach((localItem) => {
+        const key = String(localItem.studioKey || localItem.id || localItem._id);
+        const alreadyRemote = remoteList.some((remote) =>
+          String(remote.studioKey || remote.id || remote._id) === key ||
+          String(remote.id || remote._id) === String(localItem.id || localItem._id) ||
+          (!remote.studioKey && !localItem.studioKey && remote.name === localItem.name && remote.shopifyProductId === localItem.shopifyProductId));
+        if (!alreadyRemote) combined.push(localItem);
+      });
+
+      localStorage.setItem('customforge_saved_designs', JSON.stringify(combined));
+      setDesigns(combined);
+    } catch (err) {
+      console.warn('Could not load designs from API:', err.message);
+      setError(err.message || 'Could not reach the saved-design library.');
+      setDesigns(localList);
+    } finally {
+      setLoading(false);
+    }
+  }, [syncPendingDesigns]);
 
   useEffect(() => {
     fetchDesigns();
   }, [fetchDesigns]);
+
+  const handleSyncPending = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncPendingDesigns();
+      await fetchDesigns();
+      setBannerAlert({ tone: 'success', title: 'Library Sync Complete', message: 'Pending designs have been synchronized.' });
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchDesigns, syncPendingDesigns]);
+
+  const pendingCount = designs.filter((item) => item.syncStatus === 'pending' || item.syncStatus === 'failed').length;
 
   const filteredDesigns = useMemo(() => {
     if (!searchQuery.trim()) return designs;
@@ -158,6 +217,7 @@ export default function CustomerDesigns() {
       }}
       secondaryActions={[
         { content: 'Refresh', onAction: fetchDesigns, loading },
+        ...(pendingCount > 0 ? [{ content: `Sync ${pendingCount} Pending`, onAction: handleSyncPending, loading: syncing }] : []),
         { content: 'Templates Catalog', onAction: () => navigate(`${basePath}/templates`) },
         { content: 'Proof Approvals', onAction: () => navigate(`${basePath}/proofs`) },
       ]}
@@ -253,9 +313,14 @@ export default function CustomerDesigns() {
                           <Text variant="headingSm" as="h3" fontWeight="bold">
                             {design.name || 'Untitled Design'}
                           </Text>
-                          {design.tags?.[0] && (
-                            <Badge tone="info" size="small">{design.tags[0]}</Badge>
-                          )}
+                          <InlineStack gap="100">
+                            {design.tags?.[0] && (
+                              <Badge tone="info" size="small">{design.tags[0]}</Badge>
+                            )}
+                            {(design.syncStatus === 'pending' || design.syncStatus === 'failed') && (
+                              <Badge tone="warning" size="small">Saved locally only</Badge>
+                            )}
+                          </InlineStack>
                         </InlineStack>
                         <Text variant="bodySm" tone="subdued" as="p">
                           Saved {createdDate.toLocaleDateString('en-US', {

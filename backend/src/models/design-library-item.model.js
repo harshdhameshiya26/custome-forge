@@ -65,6 +65,14 @@ const designLibraryItemSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Stable client key used by Studio saves to update the same library item.
+    studioKey: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
     // ------------------------------------------------------------------
     // Product this design was originally created for
     // ------------------------------------------------------------------
@@ -202,6 +210,12 @@ designLibraryItemSchema.index(
 designLibraryItemSchema.index(
   { shop: 1, shopifyCustomerId: 1, designId: 1 },
   { unique: true, sparse: true },
+);
+
+// Studio can save repeatedly and should update the existing item, not create duplicates.
+designLibraryItemSchema.index(
+  { shop: 1, shopifyCustomerId: 1, studioKey: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { studioKey: { $type: 'string' } } },
 );
 
 // Public-design lookup (merchant-shared items visible to all customers)

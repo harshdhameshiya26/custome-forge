@@ -83,6 +83,34 @@ const COLOR_SWATCHES = [
 const colorSwatch = (name) =>
   COLOR_SWATCHES.find(([pattern]) => pattern.test(name))?.[1] || '#94a3b8';
 
+/**
+ * Category -> white studio mockup label mapping.
+ * Used by the frontend product cards to display the correct product silhouette.
+ * The actual images are served from src/assets/mockups/ based on product type matching.
+ */
+const WHITE_MOCKUP_CATEGORY_MAP = {
+  'Apparel': 'tshirt',
+  'Tops': 'tshirt',
+  'Hoodies': 'hoodie',
+  'Outerwear': 'hoodie',
+  'Drinkware': 'mug',
+  'Mugs': 'mug',
+  'Phone Cases': 'phone_case',
+  'Accessories': 'phone_case',
+};
+
+/** Returns the closest white-mockup product type key for a category string */
+const getMockupType = (category) => {
+  const normalized = String(category || '').toLowerCase();
+  for (const [key, value] of Object.entries(WHITE_MOCKUP_CATEGORY_MAP)) {
+    if (normalized.includes(key.toLowerCase())) return value;
+  }
+  if (/hoodie|sweatshirt|pullover/i.test(normalized)) return 'hoodie';
+  if (/mug|cup|drinkware|bottle/i.test(normalized)) return 'mug';
+  if (/phone|case|mobile/i.test(normalized)) return 'phone_case';
+  return 'tshirt';
+};
+
 const formatPrice = (amount, currencyCode) => {
   const value = Number(amount);
   if (!Number.isFinite(value)) return '';
@@ -154,6 +182,7 @@ const normalizeProduct = (product) => {
       image: variant.image?.url || '',
     })),
     compatibleTechniques: compatibleTechniques(`${category} ${product.productType || ''}`),
+    mockupType: getMockupType(category),
   };
 };
 

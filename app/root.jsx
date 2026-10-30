@@ -54,7 +54,7 @@ export default function App() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Pacifico&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Poppins:wght@400;600;700;800&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Anton&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Caveat:wght@600;700&family=Cinzel:wght@600;700;800&family=Cormorant+Garamond:wght@600;700&family=Courgette&family=Creepster&family=DM+Serif+Display&family=Dancing+Script:wght@600;700&family=Great+Vibes&family=Inter:wght@400;600;700&family=Kalam:wght@700&family=Kanit:wght@500;700;800&family=Lato:wght@400;700&family=Lobster&family=Lora:wght@500;600;700&family=Merriweather:wght@400;700&family=Monoton&family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;600;700&family=Oswald:wght@500;600;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Poppins:wght@400;600;700;800&family=Prata&family=Press+Start+2P&family=Raleway:wght@400;600;700&family=Righteous&family=Roboto:wght@400;500;700&family=Rye&family=Sacramento&family=Satisfy&family=Special+Elite&family=Syne:wght@600;700;800&family=Yellowtail&display=swap"
         />
         <Meta />
         <Links />
